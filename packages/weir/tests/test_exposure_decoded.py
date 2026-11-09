@@ -239,6 +239,28 @@ def test_a_key_found_as_written_and_decoded_is_one_finding(document: str) -> Non
     assert len(_scan(written(_escaped(_KEY, "middle"))).hits) == 1
 
 
+@pytest.mark.parametrize(
+    "document",
+    [
+        '{"a": "{key}", "b": "{key}ZZA"{escape}}',
+        '{"a": "{key}", "b": "Authorization: Bearer {key}XYZ"{escape}}',
+        '{"body": "{\\"a\\": \\"{key}\\", \\"b\\": \\"{key}ZZA\\"}"{escape}}',
+    ],
+)
+def test_a_longer_key_that_contains_another_is_not_the_same_finding(document: str) -> None:
+    """Two distinct keys, one the start of the other, are two findings, and
+    an escape elsewhere in the string, which makes the scan read its decoded
+    view too, leaves both standing."""
+
+    def written(escape: str) -> str:
+        return _spans(_attr("gen_ai.tool.call.arguments",
+                            document.replace("{key}", _KEY).replace("{escape}", escape)))
+
+    plain = _scan(written(""))
+    assert len({h.fingerprint for h in plain.hits if h.eligible}) == 2, plain.hits
+    assert _scan(written(', "c": "x\\ny"')) == plain
+
+
 def test_the_view_counts_no_extra_string() -> None:
     plain = _scan(_spans(_attr("gen_ai.tool.call.arguments", '{"note": "' + _KEY + '"}')))
     escaped = _scan(_spans(_attr("gen_ai.tool.call.arguments",

@@ -342,6 +342,17 @@ def test_a_value_the_scan_cannot_read_is_reported_as_not_scanned(shape: str) -> 
     assert f"<div>{_NOT_SCANNED_LINE}</div>" in html
 
 
+def test_the_gauge_does_not_call_an_export_clean_over_a_value_not_scanned() -> None:
+    """Bytes that are not UTF-8 were a value not scanned before the decoded
+    view; the same record with bytes that are is called clean, so the line
+    goes missing because of the value the scan could not read."""
+    readable = _run(["gauge"], json.dumps(_logs([{"body": {"bytesValue": _b64(b"hello")}}])))
+    assert " - no credential-shaped values" in readable.output, readable.output
+    unreadable = _run(["gauge"], json.dumps(_UNREADABLE["bytes that are not UTF-8"]))
+    assert _NOT_SCANNED_LINE in unreadable.output.splitlines(), unreadable.output
+    assert "no credential-shaped values" not in unreadable.output, unreadable.output
+
+
 def test_a_plain_string_body_is_read_as_the_body() -> None:
     [hit] = _scan(_logs([{"body": f"calling the model with {_KEY}"}]))
     assert (hit.log_record, hit.location, hit.eligible) == (0, "body", True)

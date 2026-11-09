@@ -208,7 +208,22 @@ def _plain(value: str) -> str:
     return _CUT_ESCAPE.sub("", plain)
 
 
-def _claims(found: list[tuple[int, _Candidate]]) -> list[tuple[int, _Candidate]]:
+def _read_across(text: str, cand: _Candidate, value: str, plain: str) -> bool:
+    """Whether `text`, read plainly, holds `plain` over `cand`'s value: the
+    same bytes, not another credential that merely contains `value`."""
+    at = plain.find(value)
+    if at == -1:
+        return False
+    head = _plain(text[: cand.value_start])
+    tail = _plain(text[cand.value_start :])
+    while at != -1:
+        if head.endswith(plain[:at]) and tail.startswith(plain[at:]):
+            return True
+        at = plain.find(value, at + 1)
+    return False
+
+
+def _claims(found: list[tuple[int, str, _Candidate]]) -> list[tuple[int, _Candidate]]:
     """One string's matches across its texts, one per claim. Read plainly
     (`_plain`), a credential is the same claim in every text that holds it:
     it is kept at the fewest unescapings that hold it, so the value as
@@ -219,24 +234,30 @@ def _claims(found: list[tuple[int, _Candidate]]) -> list[tuple[int, _Candidate]]
     a key escaped under a credential field name leaves only the field-name
     match as written, where read plainly the key subsumes it. So a match is
     dropped when a text with more unescapings holds an eligible match whose
-    value contains its value."""
-    if all(level == 0 for level, _ in found):
-        return found
-    read = [(level, cand, _plain(cand.value)) for level, cand in found]
+    value its own text, read plainly, holds over it (`_read_across`); a
+    longer credential elsewhere that merely contains its value leaves it
+    standing."""
+    if all(level == 0 for level, _, _ in found):
+        return [(level, cand) for level, _, cand in found]
+    read = [(level, text, cand, _plain(cand.value)) for level, text, cand in found]
 
     def same(cand: _Candidate, value: str, other: _Candidate, plain: str) -> bool:
         return cand.eligible and other.spec is cand.spec and plain == value
 
     return [
         (level, cand)
-        for level, cand, value in read
+        for level, text, cand, value in read
         if not any(
             other.eligible
             and (
                 (unescapings < level and same(cand, value, other, plain))
-                or (unescapings > level and value in plain and not same(cand, value, other, plain))
+                or (
+                    unescapings > level
+                    and not same(cand, value, other, plain)
+                    and _read_across(text, cand, value, plain)
+                )
             )
-            for unescapings, other, plain in read
+            for unescapings, _, other, plain in read
         )
     ]
 
@@ -249,11 +270,10 @@ def _raw_hits_for(scanned: ScannedString, classes: _Classes) -> list[_RawHit]:
         (level, text) for view in scanned.decoded for level, text in enumerate(view, start=1)
     ]
     found = [
-        (level, cand)
+        (level, read, cand)
         for level, text in texts
-        for cand in _candidates(
-            text if scanned.header is None else f"{scanned.header}: {text}", classes
-        )
+        for read in [text if scanned.header is None else f"{scanned.header}: {text}"]
+        for cand in _candidates(read, classes)
     ]
     return [
         _RawHit(

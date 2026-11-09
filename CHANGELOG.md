@@ -314,9 +314,12 @@ nothing of weir-scan's `weir canary judge`.
   `call_mock_<n>_<i>`** (were `call_<n>_<i>`), so an id a program or a
   framework makes up is less likely to look like one the mock issued.
 - Project links point to github.com/ralis-ai/weir.
-- `weir gauge` no longer says `no credential-shaped values` while the
-  exposure scan reports a value not scanned: the exposure line then gives
-  the counts alone, followed by the `value not scanned` line.
+- `weir gauge` no longer says `no credential-shaped values` whenever the
+  exposure scan reports any value not scanned, for any reason: bytes that
+  are not UTF-8, a value in a shape the scan does not read, a value nested
+  past the depth cap, or a string escaped past the decoded view's bound.
+  The exposure line then gives the counts alone, followed by the
+  `value not scanned` line.
 
 ### Fixed
 - **weir-run never relays a slice of a planted key.** When `weir-run run`
