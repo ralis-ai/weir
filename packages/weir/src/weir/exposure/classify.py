@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from bisect import bisect_left
 from collections.abc import Callable
 from typing import NamedTuple
 
@@ -36,7 +37,7 @@ from weir.catalog import (
     matched_value,
 )
 from weir.exposure._types import ExposureHit, ExposureScan
-from weir.json_escapes import decoded_view
+from weir.json_escapes import LEVELS, decoded_view
 from weir.schema.exposure import ExposureSurface, ScannedString, Segment, format_location
 
 FINGERPRINT_VERSION = 1
@@ -77,8 +78,8 @@ class _RawHit(msgspec.Struct, frozen=True):
 
 
 class _Candidate(NamedTuple):
-    """One match at one (span, location), before subsumption. `value_start`,
-    `value_end` and `has_group` exist only to decide subsumption and claims
+    """One match at one (span, location). `value_start`, `value_end`,
+    `has_group` and `subsumed` exist only to decide subsumption and claims
     (`_claims`) at THIS location, so they never make it into `_RawHit`."""
 
     spec: SourceSpec
@@ -89,6 +90,7 @@ class _Candidate(NamedTuple):
     value_start: int
     value_end: int
     has_group: bool
+    subsumed: bool = False
 
 
 def _fingerprint(value: str) -> str:
@@ -144,7 +146,9 @@ _Classes = list[tuple[SourceSpec, re.Pattern[str], int]]
 
 
 def _candidates(text: str, classes: _Classes) -> list[_Candidate]:
-    """Every match in one text, after subsumption."""
+    """Every match in one text, each flagged `subsumed` when `_subsumed`
+    drops it: `_claims` reads a subsumed match to drop the same claim
+    found with fewer unescapings."""
     # Class assignment happens BEFORE eligibility and is final: at one offset
     # the longest literal prefix wins, so one value yields one hit per
     # location, never two. An sk-ant- value that fails the strict Anthropic
@@ -192,7 +196,7 @@ def _candidates(text: str, classes: _Classes) -> list[_Candidate]:
             _Candidate(spec, start, value, prefix, eligible, value_start, value_end, has_group)
         )
 
-    return [cand for cand in candidates if not _subsumed(cand, candidates)]
+    return [cand._replace(subsumed=_subsumed(cand, candidates)) for cand in candidates]
 
 
 # An escape cut short at the end of a match: a class's length bound can end
@@ -208,19 +212,22 @@ def _plain(value: str) -> str:
     return _CUT_ESCAPE.sub("", plain)
 
 
-def _read_across(text: str, cand: _Candidate, value: str, plains: set[str]) -> bool:
-    """Whether `text`, read plainly, holds one of `plains` over `cand`'s
-    value: the same bytes, not another credential that merely contains
-    `value`."""
-    head = _plain(text[: cand.value_start])
-    tail = _plain(text[cand.value_start :])
-    for plain in plains:
-        at = plain.find(value)
-        while at != -1:
-            if head.endswith(plain[:at]) and tail.startswith(plain[at:]):
-                return True
-            at = plain.find(value, at + 1)
-    return False
+# Text cut short reads plainly like the whole text but for its end: an
+# escape is at most 12 characters (a surrogate pair), so each unescaping
+# changes at most 11 more characters before the cut.
+_CUT_MARGIN = 11 * LEVELS
+
+
+def _plain_from(text: str, start: int, length: int) -> str:
+    """`text` from `start` read plainly, at least `length` characters of it
+    when it has them: decoded over a window, never the whole text."""
+    span = length + _CUT_MARGIN
+    while start + span < len(text):
+        plain = _plain(text[start : start + span])
+        if len(plain) >= length + _CUT_MARGIN:
+            return plain[: len(plain) - _CUT_MARGIN]
+        span *= 2
+    return _plain(text[start:])
 
 
 def _claims(found: list[tuple[int, str, _Candidate]]) -> list[tuple[int, _Candidate]]:
@@ -228,44 +235,56 @@ def _claims(found: list[tuple[int, str, _Candidate]]) -> list[tuple[int, _Candid
     (`_plain`), a credential is the same claim in every text that holds it:
     it is kept at the fewest unescapings that hold it, so the value as
     written stands wherever the text itself holds it (a token with `\\/` for
-    `/` keeps that spelling). And a match the decoded view reads as part of
-    a credential is that credential: an escape inside a key cuts the key
-    short as written (`sk-proj-Qh7R\\u006b...` matches up to the escape), and
-    a key escaped under a credential field name leaves only the field-name
-    match as written, where read plainly the key subsumes it. So a match is
-    dropped when a text with more unescapings holds an eligible match of
-    its class, or one that would subsume it (`_subsumed`), whose value its
-    own text, read plainly, holds over it (`_read_across`). A longer
-    credential elsewhere that merely contains its value, or one of another
-    class it would stand beside in plain text, leaves it standing."""
+    `/` keeps that spelling). And a match the decoded view reads further
+    is the claim its own class makes there: an escape inside a key cuts the
+    key short as written (`sk-proj-Qh7R\\u006b...` matches up to the
+    escape), and under a credential field name the field match as written
+    is subsumed only where read plainly the key lies inside its value. So a
+    match with an escape in or right after its value is dropped when a text
+    with more unescapings holds a reading of its class whose value starts
+    with its value - longer, or equal and subsumed or eligible where the
+    match is not - and its own text, read plainly, holds that reading over
+    it. A longer credential elsewhere that merely starts with its value, or
+    one of another class, leaves it standing."""
     if all(level == 0 for level, _, _ in found):
-        return [(level, cand) for level, _, cand in found]
+        return [(level, cand) for level, _, cand in found if not cand.subsumed]
     read = [(level, text, cand, _plain(cand.value)) for level, text, cand in found]
-    # Each eligible claim, by class and plain value: the fewest unescapings
-    # that hold it, and every text depth that does.
+    # Per class, every reading by plain value, sorted so the readings that
+    # start with a value are one run; and the fewest unescapings that hold
+    # each eligible claim.
+    readings: dict[str, list[tuple[str, int, bool, bool]]] = {}
     fewest: dict[tuple[str, str], int] = {}
-    eligible: set[tuple[int, str, str]] = set()
     for level, _, cand, value in read:
-        if cand.eligible:
+        readings.setdefault(cand.spec.name, []).append(
+            (value, level, cand.subsumed, cand.eligible)
+        )
+        if cand.eligible and not cand.subsumed:
             claim = (cand.spec.name, value)
             fewest[claim] = min(level, fewest.get(claim, level))
-            eligible.add((level, cand.spec.name, value))
+    for entries in readings.values():
+        entries.sort()
 
     kept: list[tuple[int, _Candidate]] = []
     for level, text, cand, value in read:
-        name = cand.spec.name
-        if cand.eligible and fewest[(name, value)] < level:
+        if cand.subsumed:
             continue
-        covering = {
-            plain
-            for unescapings, other, plain in eligible
-            if unescapings > level
-            and (other == name or cand.has_group)
-            and value in plain
-            and not (cand.eligible and other == name and plain == value)
-        }
-        if covering and _read_across(text, cand, value, covering):
+        if cand.eligible and fewest[(cand.spec.name, value)] < level:
             continue
+        if "\\" in text[cand.value_start : cand.value_end + 1]:
+            entries = readings[cand.spec.name]
+            covering: list[str] = []
+            at = bisect_left(entries, (value,))
+            while at < len(entries) and entries[at][0].startswith(value):
+                plain, unescapings, subsumed, eligible = entries[at]
+                if unescapings > level and (
+                    plain != value or subsumed or (eligible and not cand.eligible)
+                ):
+                    covering.append(plain)
+                at += 1
+            if covering:
+                tail = _plain_from(text, cand.value_start, max(map(len, covering)))
+                if any(tail.startswith(plain) for plain in covering):
+                    continue
         kept.append((level, cand))
     return kept
 

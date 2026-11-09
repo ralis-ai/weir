@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -122,6 +123,8 @@ def _cli(body: str) -> dict[str, object]:
 _DOCUMENTS: dict[str, str] = {
     "tool-call arguments": '{"query": "weather", "note": "{}"}',
     "under a credential field name": '{"query": "weather", "api_key": "{}"}',
+    "a bearer header under a credential field name": '{"password": "Bearer {}"}',
+    "more than the key under a credential field name": '{"api_key": "{} trailing words"}',
     "a JSON string": '"{}"',
     "an array": '[1, null, "{}"]',
     "an object key": '{"{}": true}',
@@ -297,6 +300,29 @@ def test_an_escaped_key_with_a_key_of_another_class_inside_it(value: str, patter
     plain = _scan(written(value))
     assert len({h.source_class for h in plain.hits if h.eligible}) == 2, plain.hits
     assert found(_scan(written(_escaped(value, pattern)))) == found(plain)
+
+
+def test_many_keys_beside_one_escape_cost_about_what_they_cost_without_it() -> None:
+    """One string of many distinct keys, each also written with more after
+    it: one escape makes the scan read the decoded view too, which may cost
+    a few times the plain scan, never a cost that grows with the square of
+    the keys."""
+    keys = [_KEY[:-6] + f"{i:06d}" for i in range(2000)]
+    document = {f"a{i}": key for i, key in enumerate(keys)}
+    document |= {f"b{i}": key + "ZZA" for i, key in enumerate(keys)}
+
+    def cost(escape: str) -> float:
+        body = _spans(_attr("gen_ai.tool.call.arguments", json.dumps(document | {"c": escape})))
+        timings = []
+        for _ in range(3):
+            began = time.perf_counter()
+            scan = _scan(body)
+            timings.append(time.perf_counter() - began)
+        assert len({h.fingerprint for h in scan.hits}) == 2 * len(keys)
+        return min(timings)
+
+    plain = cost("x")
+    assert cost("x\ny") < 10 * plain + 0.5
 
 
 def test_the_view_counts_no_extra_string() -> None:
