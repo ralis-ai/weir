@@ -4,7 +4,9 @@ rather than a stage of it.
 
 The strings arrive already enumerated by `weir.adapters.otel.exposure`, which
 is why this module needs no wire model and never imports `weir.adapters` - the
-"Analysis-path purity" contract holds it to that.
+"Analysis-path purity" contract holds it to that. Each string is read as
+written and through its decoded view (docs/scan.md, "JSON escapes"), which
+the walk hands over beside it.
 
 This is also the one place the matched values and the names they sit under
 are both in hand, so it is where a span id, span name or location key that
@@ -34,6 +36,7 @@ from weir.catalog import (
     matched_value,
 )
 from weir.exposure._types import ExposureHit, ExposureScan
+from weir.json_escapes import decoded_view
 from weir.schema.exposure import ExposureSurface, ScannedString, Segment, format_location
 
 FINGERPRINT_VERSION = 1
@@ -64,6 +67,8 @@ class _RawHit(msgspec.Struct, frozen=True):
     path: tuple[Segment, ...]
     key: bool
     location: str
+    # How many unescapings gave the text the hit is in: 0 as written.
+    unescapings: int
     start: int
     spec: SourceSpec
     value: str
@@ -135,9 +140,11 @@ def _subsumed(cand: _Candidate, candidates: list[_Candidate]) -> bool:
     )
 
 
-def _raw_hits_for(
-    scanned: ScannedString, classes: list[tuple[SourceSpec, re.Pattern[str], int]]
-) -> list[_RawHit]:
+_Classes = list[tuple[SourceSpec, re.Pattern[str], int]]
+
+
+def _candidates(text: str, classes: _Classes) -> list[_Candidate]:
+    """Every match in one text, after subsumption."""
     # Class assignment happens BEFORE eligibility and is final: at one offset
     # the longest literal prefix wins, so one value yields one hit per
     # location, never two. An sk-ant- value that fails the strict Anthropic
@@ -148,7 +155,6 @@ def _raw_hits_for(
     # `(?i)`-prefixed `credential_field`) falls back to catalog list order -
     # no bundled pair collides at one offset, so this is untested by design,
     # not unhandled.
-    text = scanned.text if scanned.header is None else f"{scanned.header}: {scanned.text}"
     best: dict[int, tuple[int, SourceSpec, re.Match[str]]] = {}
     for spec, pattern, prefix_len in classes:
         for match in pattern.finditer(text):
@@ -186,15 +192,77 @@ def _raw_hits_for(
             _Candidate(spec, start, value, prefix, eligible, value_start, value_end, has_group)
         )
 
+    return [cand for cand in candidates if not _subsumed(cand, candidates)]
+
+
+# An escape cut short at the end of a match: a class's length bound can end
+# a match inside one.
+_CUT_ESCAPE = re.compile(r"\\(?:u[0-9a-fA-F]{0,3})?\Z")
+
+
+def _plain(value: str) -> str:
+    """`value` with its JSON escapes undone as far as the decoded view goes,
+    less an escape cut short at its end."""
+    texts = decoded_view(value.encode("utf-8", errors="surrogatepass")).texts
+    plain = texts[-1].decode("utf-8", errors="surrogatepass") if texts else value
+    return _CUT_ESCAPE.sub("", plain)
+
+
+def _claims(found: list[tuple[int, _Candidate]]) -> list[tuple[int, _Candidate]]:
+    """One string's matches across its texts, one per claim. Read plainly
+    (`_plain`), a credential is the same claim in every text that holds it:
+    it is kept at the fewest unescapings that hold it, so the value as
+    written stands wherever the text itself holds it (a token with `\\/` for
+    `/` keeps that spelling). And a match the decoded view reads as part of
+    a credential is that credential: an escape inside a key cuts the key
+    short as written (`sk-proj-Qh7R\\u006b...` matches up to the escape), and
+    a key escaped under a credential field name leaves only the field-name
+    match as written, where read plainly the key subsumes it. So a match is
+    dropped when a text with more unescapings holds an eligible match whose
+    value contains its value."""
+    if all(level == 0 for level, _ in found):
+        return found
+    read = [(level, cand, _plain(cand.value)) for level, cand in found]
+
+    def same(cand: _Candidate, value: str, other: _Candidate, plain: str) -> bool:
+        return cand.eligible and other.spec is cand.spec and plain == value
+
+    return [
+        (level, cand)
+        for level, cand, value in read
+        if not any(
+            other.eligible
+            and (
+                (unescapings < level and same(cand, value, other, plain))
+                or (unescapings > level and value in plain and not same(cand, value, other, plain))
+            )
+            for unescapings, other, plain in read
+        )
+    ]
+
+
+def _raw_hits_for(scanned: ScannedString, classes: _Classes) -> list[_RawHit]:
+    """The string's matches as written, then those of its decoded view
+    (`ScannedString.decoded`), each text read the same way and reported at
+    the string's own span and location."""
+    texts = [(0, scanned.text)] + [
+        (level, text) for view in scanned.decoded for level, text in enumerate(view, start=1)
+    ]
+    found = [
+        (level, cand)
+        for level, text in texts
+        for cand in _candidates(
+            text if scanned.header is None else f"{scanned.header}: {text}", classes
+        )
+    ]
     return [
         _RawHit(
             record_index=scanned.record_index, span_ref=scanned.span_ref,
             span_name=scanned.span_name, log_record=scanned.log_record,
-            path=scanned.path, key=scanned.key, location=scanned.location, start=cand.start,
+            path=scanned.path, key=scanned.key, location=scanned.location, unescapings=level, start=cand.start,
             spec=cand.spec, value=cand.value, prefix=cand.prefix, eligible=cand.eligible,
         )
-        for cand in candidates
-        if not _subsumed(cand, candidates)
+        for level, cand in _claims(found)
     ]
 
 
@@ -273,7 +341,9 @@ def classify_exposure(surface: ExposureSurface, catalog: Catalog) -> ExposureSca
     # different secrets at one location, and is None for triage hits, which
     # collapses this to the (span, location, class) rule triage needs.
     seen: set[tuple[int, str, str, str | None]] = set()
-    for hit in sorted(raw, key=lambda h: (h.record_index, h.location, h.start)):
+    # Within a location, the text as written first: where the decoded view
+    # finds the same claim again, the one as written is kept.
+    for hit in sorted(raw, key=lambda h: (h.record_index, h.location, h.unescapings, h.start)):
         fingerprint = _fingerprint(hit.value) if hit.eligible else None
         key = (hit.record_index, hit.location, hit.spec.name, fingerprint)
         if key in seen:

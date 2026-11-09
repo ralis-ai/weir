@@ -41,7 +41,12 @@ def exposure_gauge_lines(scan: ExposureScan) -> list[str]:
         + f"{scan.strings_scanned} strings"
     )
     if not scan.hits:
-        return [f"{header} - no credential-shaped values", *not_scanned_lines(scan)]
+        # A value inside the spans and log records counted above that the
+        # scan could not read may hold one, so "none" is said only when every
+        # value was read. A batch not scanned is outside those counts, and
+        # its own line says so.
+        clean = "" if scan.values_not_scanned else " - no credential-shaped values"
+        return [f"{header}{clean}", *not_scanned_lines(scan)]
 
     lines = [header]
     eligible = [h for h in scan.hits if h.eligible]

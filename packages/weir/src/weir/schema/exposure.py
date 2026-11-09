@@ -73,6 +73,12 @@ class ScannedString(msgspec.Struct, frozen=True):
     @property
     def location(self) -> str:
         return format_location(self.path, key=self.key)
+    # The decoded view (`weir.json_escapes`) of each JSON text `text` holds
+    # where it holds an escape (the canary judge's rule, docs/canary.md "The
+    # decoded view"): per JSON text, the text unescaped once, twice and so
+    # on. Each is read like `text`, at the same span and location; empty for
+    # a string holding no escaped JSON. Value-carrying, like `text`.
+    decoded: tuple[tuple[str, ...], ...] = ()
 
 
 class ExposureSurface(msgspec.Struct, frozen=True):
@@ -87,5 +93,6 @@ class ExposureSurface(msgspec.Struct, frozen=True):
     batches_not_scanned: int = 0
     # Values inside the read data whose shape the scan could not read
     # (an undecodable bytesValue, a list given as an object, a depth past
-    # the cap): reported as not scanned, never as clean.
+    # the cap, a string escaped past the decoded view's bound): reported as
+    # not scanned, never as clean.
     values_not_scanned: int = 0

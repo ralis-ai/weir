@@ -178,6 +178,20 @@ also fail on 3. See Changed.
   decisions are made, how changes land, how to become a maintainer and how
   the document changes. It names the security lead, who `SECURITY.md` now
   names too. `CONTRIBUTING.md` links to it.
+- **The exposure scan reads JSON escapes.** `weir scan` and `weir gauge`
+  find a credential when the JSON around it writes any of its letters as a
+  `\uXXXX` escape. Where a string the scan reads (tool-call arguments or
+  any other attribute value, a log body, in a span or a log record) is
+  JSON or holds a JSON object or array, it is also read with its escapes
+  undone, by the decoded view the canary judge reads and by the same rule.
+  The credential is reported at the same span or log record and location
+  as the plain value would be, with the same class, grade, last 4 and
+  fingerprint, and a credential found both as written and decoded is one
+  finding. Under the key `token`, a letter written `\u0041` in JSON now
+  counts as the letter it stands for. Text is unescaped up to 16 times; a
+  string escaped deeper is counted as `1 value not scanned`, never as
+  clean. Text that holds no JSON is read as written, and every other scan
+  result is unchanged (docs/scan.md, "JSON escapes").
 
 ### Changed
 - **`weir scan` exits 3, incomplete, when the export holds data the scan
@@ -300,6 +314,9 @@ nothing of weir-scan's `weir canary judge`.
   `call_mock_<n>_<i>`** (were `call_<n>_<i>`), so an id a program or a
   framework makes up is less likely to look like one the mock issued.
 - Project links point to github.com/ralis-ai/weir.
+- `weir gauge` no longer says `no credential-shaped values` while the
+  exposure scan reports a value not scanned: the exposure line then gives
+  the counts alone, followed by the `value not scanned` line.
 
 ### Fixed
 - **weir-run never relays a slice of a planted key.** When `weir-run run`
