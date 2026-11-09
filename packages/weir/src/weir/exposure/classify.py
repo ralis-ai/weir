@@ -78,8 +78,8 @@ class _RawHit(msgspec.Struct, frozen=True):
 
 class _Candidate(NamedTuple):
     """One match at one (span, location), before subsumption. `value_start`,
-    `value_end` and `has_group` exist only to decide subsumption at THIS
-    location, so they never make it into `_RawHit`."""
+    `value_end` and `has_group` exist only to decide subsumption and claims
+    (`_claims`) at THIS location, so they never make it into `_RawHit`."""
 
     spec: SourceSpec
     start: int
@@ -208,18 +208,18 @@ def _plain(value: str) -> str:
     return _CUT_ESCAPE.sub("", plain)
 
 
-def _read_across(text: str, cand: _Candidate, value: str, plain: str) -> bool:
-    """Whether `text`, read plainly, holds `plain` over `cand`'s value: the
-    same bytes, not another credential that merely contains `value`."""
-    at = plain.find(value)
-    if at == -1:
-        return False
+def _read_across(text: str, cand: _Candidate, value: str, plains: set[str]) -> bool:
+    """Whether `text`, read plainly, holds one of `plains` over `cand`'s
+    value: the same bytes, not another credential that merely contains
+    `value`."""
     head = _plain(text[: cand.value_start])
     tail = _plain(text[cand.value_start :])
-    while at != -1:
-        if head.endswith(plain[:at]) and tail.startswith(plain[at:]):
-            return True
-        at = plain.find(value, at + 1)
+    for plain in plains:
+        at = plain.find(value)
+        while at != -1:
+            if head.endswith(plain[:at]) and tail.startswith(plain[at:]):
+                return True
+            at = plain.find(value, at + 1)
     return False
 
 
@@ -233,33 +233,41 @@ def _claims(found: list[tuple[int, str, _Candidate]]) -> list[tuple[int, _Candid
     short as written (`sk-proj-Qh7R\\u006b...` matches up to the escape), and
     a key escaped under a credential field name leaves only the field-name
     match as written, where read plainly the key subsumes it. So a match is
-    dropped when a text with more unescapings holds an eligible match whose
-    value its own text, read plainly, holds over it (`_read_across`); a
-    longer credential elsewhere that merely contains its value leaves it
-    standing."""
+    dropped when a text with more unescapings holds an eligible match of
+    its class, or one that would subsume it (`_subsumed`), whose value its
+    own text, read plainly, holds over it (`_read_across`). A longer
+    credential elsewhere that merely contains its value, or one of another
+    class it would stand beside in plain text, leaves it standing."""
     if all(level == 0 for level, _, _ in found):
         return [(level, cand) for level, _, cand in found]
     read = [(level, text, cand, _plain(cand.value)) for level, text, cand in found]
+    # Each eligible claim, by class and plain value: the fewest unescapings
+    # that hold it, and every text depth that does.
+    fewest: dict[tuple[str, str], int] = {}
+    eligible: set[tuple[int, str, str]] = set()
+    for level, _, cand, value in read:
+        if cand.eligible:
+            claim = (cand.spec.name, value)
+            fewest[claim] = min(level, fewest.get(claim, level))
+            eligible.add((level, cand.spec.name, value))
 
-    def same(cand: _Candidate, value: str, other: _Candidate, plain: str) -> bool:
-        return cand.eligible and other.spec is cand.spec and plain == value
-
-    return [
-        (level, cand)
-        for level, text, cand, value in read
-        if not any(
-            other.eligible
-            and (
-                (unescapings < level and same(cand, value, other, plain))
-                or (
-                    unescapings > level
-                    and not same(cand, value, other, plain)
-                    and _read_across(text, cand, value, plain)
-                )
-            )
-            for unescapings, _, other, plain in read
-        )
-    ]
+    kept: list[tuple[int, _Candidate]] = []
+    for level, text, cand, value in read:
+        name = cand.spec.name
+        if cand.eligible and fewest[(name, value)] < level:
+            continue
+        covering = {
+            plain
+            for unescapings, other, plain in eligible
+            if unescapings > level
+            and (other == name or cand.has_group)
+            and value in plain
+            and not (cand.eligible and other == name and plain == value)
+        }
+        if covering and _read_across(text, cand, value, covering):
+            continue
+        kept.append((level, cand))
+    return kept
 
 
 def _raw_hits_for(scanned: ScannedString, classes: _Classes) -> list[_RawHit]:

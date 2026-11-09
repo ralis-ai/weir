@@ -109,6 +109,12 @@ JSON document held as a string inside it is decoded by the next.
 - A key found this way is reported at the same span or log record and
   location as the string it sits in, exactly as if it had been written
   plainly there. A key found both as written and decoded is one finding.
+- Every JSON escape is undone, not only `\uXXXX`: `\n`, `\t`, `\"`, `\\`
+  and `\/` too. So JSON text that holds any escape can gain findings,
+  triage findings included, that the text as written does not give, and
+  `weir gauge` then shows them instead of `no credential-shaped values`.
+  For text with no JSON escape every result is the same as without the
+  view.
 - Text that holds no complete JSON object, array or string, such as a
   `key=s...` line or JSON cut short before it closes, is read as
   written only.

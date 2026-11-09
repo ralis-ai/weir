@@ -261,6 +261,44 @@ def test_a_longer_key_that_contains_another_is_not_the_same_finding(document: st
     assert _scan(written(', "c": "x\\ny"')) == plain
 
 
+# A key of one class with a key of another inside it: plain text holds both.
+_KEY_IN_KEY = [
+    "sk-" + _KEYS["github"],
+    "sk-proj-Qh7Rk2Ls9Vn4Xb6Zt1Wc8-" + _KEYS["aws"],
+]
+
+
+@pytest.mark.parametrize("value", _KEY_IN_KEY)
+def test_a_key_inside_a_key_of_another_class_stands_beside_an_escape(value: str) -> None:
+    """With no escape the string is read as written only, as before the
+    view; an escape elsewhere must leave both keys standing."""
+
+    def written(escape: str) -> str:
+        return _spans(_attr("gen_ai.tool.call.arguments",
+                            '{"a": "' + value + '"' + escape + "}"))
+
+    plain = _scan(written(""))
+    assert len({h.source_class for h in plain.hits if h.eligible}) == 2, plain.hits
+    assert _scan(written(', "b": "x\\ny"')) == plain
+
+
+@pytest.mark.parametrize("pattern", ["first", "middle"])
+@pytest.mark.parametrize("value", _KEY_IN_KEY)
+def test_an_escaped_key_with_a_key_of_another_class_inside_it(value: str, pattern: str) -> None:
+    def written(text: str) -> str:
+        return _spans(_attr("gen_ai.tool.call.arguments", '{"a": "' + text + '"}'))
+
+    """Both keys are found, as in the plain export; the decoded key is
+    listed after the one as written, so the order is not compared."""
+
+    def found(scan: ExposureScan) -> list[tuple[str, bool, str | None]]:
+        return sorted((h.source_class, h.eligible, h.fingerprint) for h in scan.hits)
+
+    plain = _scan(written(value))
+    assert len({h.source_class for h in plain.hits if h.eligible}) == 2, plain.hits
+    assert found(_scan(written(_escaped(value, pattern)))) == found(plain)
+
+
 def test_the_view_counts_no_extra_string() -> None:
     plain = _scan(_spans(_attr("gen_ai.tool.call.arguments", '{"note": "' + _KEY + '"}')))
     escaped = _scan(_spans(_attr("gen_ai.tool.call.arguments",

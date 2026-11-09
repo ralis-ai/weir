@@ -188,9 +188,13 @@ also fail on 3. See Changed.
   as the plain value would be, with the same class, grade, last 4 and
   fingerprint, and a credential found both as written and decoded is one
   finding. Under the key `token`, a letter written `\u0041` in JSON now
-  counts as the letter it stands for. Text is unescaped up to 16 times; a
-  string escaped deeper is counted as `1 value not scanned`, never as
-  clean. Text that holds no JSON is read as written, and every other scan
+  counts as the letter it stands for. The view undoes every JSON escape,
+  not only `\uXXXX` (`\n`, `\t`, `\"`, `\\` and `\/` too), so JSON text
+  that holds any escape can gain findings, triage findings included, and
+  `weir gauge` then shows them instead of `no credential-shaped values`.
+  Text is unescaped up to 16 times; a string escaped deeper is counted as
+  `1 value not scanned`, never as clean. Text that holds no JSON is read
+  as written, and for text with no JSON escape every other scan and gauge
   result is unchanged (docs/scan.md, "JSON escapes").
 
 ### Changed
