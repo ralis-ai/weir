@@ -302,27 +302,47 @@ def test_an_escaped_key_with_a_key_of_another_class_inside_it(value: str, patter
     assert found(_scan(written(_escaped(value, pattern)))) == found(plain)
 
 
-def test_many_keys_beside_one_escape_cost_about_what_they_cost_without_it() -> None:
-    """One string of many distinct keys, each also written with more after
-    it: one escape makes the scan read the decoded view too, which may cost
-    a few times the plain scan, never a cost that grows with the square of
-    the keys."""
-    keys = [_KEY[:-6] + f"{i:06d}" for i in range(2000)]
+def _keys_and_longer_keys(count: int, escaped: bool) -> tuple[str, int]:
+    """Distinct keys, each also written with more after it, and one escape
+    elsewhere in the string or none."""
+    keys = [_KEY[:-6] + f"{i:06d}" for i in range(count)]
     document = {f"a{i}": key for i, key in enumerate(keys)}
     document |= {f"b{i}": key + "ZZA" for i, key in enumerate(keys)}
+    document["c"] = "x\ny" if escaped else "x"
+    return json.dumps(document), 2 * count
 
-    def cost(escape: str) -> float:
-        body = _spans(_attr("gen_ai.tool.call.arguments", json.dumps(document | {"c": escape})))
+
+def _keys_cut_short_alike(count: int, escaped: bool) -> tuple[str, int]:
+    """Distinct keys that share their start, each with a letter after it
+    written as an escape or plainly, so that as written every key is cut
+    short to the same value."""
+    cut = _KEY.index("Fg0")
+    letter = "\\u0046" if escaped else "F"
+    items = [f'"a{i}": "{_KEY[:cut]}{letter}g0Yu2A{i:06d}"' for i in range(count)]
+    return "{" + ", ".join(items) + "}", count
+
+
+@pytest.mark.parametrize("shape", [_keys_and_longer_keys, _keys_cut_short_alike])
+def test_many_keys_beside_escapes_cost_about_what_they_cost_without_them(
+    shape: Callable[[int, bool], tuple[str, int]],
+) -> None:
+    """One string of many distinct keys: escapes make the scan read the
+    decoded view too, which may cost a few times the plain scan, never a
+    cost that grows with the square of the keys."""
+
+    def cost(escaped: bool) -> float:
+        text, distinct = shape(4000, escaped)
+        body = _spans(_attr("gen_ai.tool.call.arguments", text))
         timings = []
         for _ in range(3):
             began = time.perf_counter()
             scan = _scan(body)
             timings.append(time.perf_counter() - began)
-        assert len({h.fingerprint for h in scan.hits}) == 2 * len(keys)
+        assert len({h.fingerprint for h in scan.hits if h.eligible}) == distinct
         return min(timings)
 
-    plain = cost("x")
-    assert cost("x\ny") < 10 * plain + 0.5
+    plain = cost(False)
+    assert cost(True) < 10 * plain + 0.5
 
 
 def test_the_view_counts_no_extra_string() -> None:

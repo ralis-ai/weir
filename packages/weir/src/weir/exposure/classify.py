@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import hashlib
 import re
-from bisect import bisect_left
 from collections.abc import Callable
 from typing import NamedTuple
 
@@ -249,20 +248,42 @@ def _claims(found: list[tuple[int, str, _Candidate]]) -> list[tuple[int, _Candid
     if all(level == 0 for level, _, _ in found):
         return [(level, cand) for level, _, cand in found if not cand.subsumed]
     read = [(level, text, cand, _plain(cand.value)) for level, text, cand in found]
-    # Per class, every reading by plain value, sorted so the readings that
-    # start with a value are one run; and the fewest unescapings that hold
-    # each eligible claim.
-    readings: dict[str, list[tuple[str, int, bool, bool]]] = {}
+    # Per class, each plain value read with the most unescapings that hold
+    # it at all, subsumed, and eligible, and every length a value has; and
+    # the fewest unescapings that hold each eligible claim.
+    readings: dict[str, dict[str, list[int]]] = {}
+    lengths: dict[str, set[int]] = {}
     fewest: dict[tuple[str, str], int] = {}
     for level, _, cand, value in read:
-        readings.setdefault(cand.spec.name, []).append(
-            (value, level, cand.subsumed, cand.eligible)
-        )
+        name = cand.spec.name
+        deepest = readings.setdefault(name, {}).setdefault(value, [-1, -1, -1])
+        deepest[0] = max(deepest[0], level)
+        if cand.subsumed:
+            deepest[1] = max(deepest[1], level)
+        if cand.eligible:
+            deepest[2] = max(deepest[2], level)
+        lengths.setdefault(name, set()).add(len(value))
         if cand.eligible and not cand.subsumed:
-            claim = (cand.spec.name, value)
+            claim = (name, value)
             fewest[claim] = min(level, fewest.get(claim, level))
-    for entries in readings.values():
-        entries.sort()
+
+    def covered(text: str, cand: _Candidate, level: int, value: str) -> bool:
+        name = cand.spec.name
+        tail = _plain_from(text, cand.value_start, max(lengths[name]))
+        if not tail.startswith(value):
+            return False
+        for length in lengths[name]:
+            if length < len(value) or length > len(tail):
+                continue
+            deepest = readings[name].get(tail[:length])
+            if deepest is None:
+                continue
+            if length > len(value):
+                if deepest[0] > level:
+                    return True
+            elif deepest[1] > level or (not cand.eligible and deepest[2] > level):
+                return True
+        return False
 
     kept: list[tuple[int, _Candidate]] = []
     for level, text, cand, value in read:
@@ -270,21 +291,10 @@ def _claims(found: list[tuple[int, str, _Candidate]]) -> list[tuple[int, _Candid
             continue
         if cand.eligible and fewest[(cand.spec.name, value)] < level:
             continue
-        if "\\" in text[cand.value_start : cand.value_end + 1]:
-            entries = readings[cand.spec.name]
-            covering: list[str] = []
-            at = bisect_left(entries, (value,))
-            while at < len(entries) and entries[at][0].startswith(value):
-                plain, unescapings, subsumed, eligible = entries[at]
-                if unescapings > level and (
-                    plain != value or subsumed or (eligible and not cand.eligible)
-                ):
-                    covering.append(plain)
-                at += 1
-            if covering:
-                tail = _plain_from(text, cand.value_start, max(map(len, covering)))
-                if any(tail.startswith(plain) for plain in covering):
-                    continue
+        if "\\" in text[cand.value_start : cand.value_end + 1] and covered(
+            text, cand, level, value
+        ):
+            continue
         kept.append((level, cand))
     return kept
 
