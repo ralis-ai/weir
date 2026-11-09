@@ -390,10 +390,8 @@ _NEAR_MISSES = {
     "token-byte-fallback": json.dumps({"token": "\\xe4\\xbd\\xa0"}),
     "token-emoji-escaped": ascii({"token": "\U0001f600\U0001f600"}),
     "token-emoji-escaped-double-quoted": '{"token": "\\U0001f600\\U0001F600"}',
-    "token-escaped-letters": '{"token": "\\u0041\\u0042123456789"}',
-    "token-escaped-letters-in-json": json.dumps(
-        {"body": '{"token": "\\u0041\\u0042123456789"}'}
-    ),
+    # Letters written `\\u0041` in JSON are read as the letters they stand
+    # for (docs/scan.md, "JSON escapes"): test_exposure_decoded.py.
     "token-letters-after-line-break": json.dumps({"token": "12345678\nabcdefgh"}),
     "ya29-prose": "ya29 tokens are short-lived; see ya29.example for the format",
     "ya29-placeholder": "ya29.<access-token>",
