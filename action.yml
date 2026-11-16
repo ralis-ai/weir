@@ -1,8 +1,5 @@
 name: Weir leak check
-description: >-
-  Run a weir-run config (fake credentials, a loopback mock, your agent's
-  flows) and post the verdict, leak, unmediated tool call, clean or
-  incomplete, on the pull request.
+description: "Leak tests for AI agents: plant fake API keys and fail the check if one reaches traces, logs, prompts or other hosts."
 author: IdoGol24
 branding:
   icon: shield
