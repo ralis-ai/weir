@@ -66,12 +66,18 @@ read from it.
 2. **Project files** (`project_scan`). Imported gitleaks and trufflehog
    results, plus Weir's own detectors over every project file: the catalog's
    key-shaped classes judged by their eligibility patterns, the token of an
-   `Authorization: Bearer` header judged by its floor, the catalog's
+   `Authorization: Bearer` header judged by its floor, the credential query
+   parameters of a signed URL judged by theirs (the same ones `weir scan`
+   reports, see [docs/scan.md](scan.md)), the catalog's
    `credential_field` and `json_credential_field` assignment classes (with
    the 0.4.1 escape-boundary fix),
    an assignment detector for `key = value`, `key: value` and JSON
    `"key": "value"` whose key name suggests a secret, and standalone shapes
-   (JWT, URL with a password, PEM private key). Hits covering the same bytes
+   (JWT, URL with a password, PEM private key). A URL with a password is the
+   catalog's `url_with_password` class, so the inventory and `weir scan`
+   recognize the same URLs and neither counts an empty or placeholder
+   password (`${DB_PASSWORD}`, `<password>`, `***`, `changeme`); the
+   inventory keeps the whole URL as the value. Hits covering the same bytes
    merge into one credential whose `detectors` lists every finder; the same
    value twice in one file is one credential with two offsets. A scanner
    value the file it names does not hold (a gitleaks report written with
@@ -197,7 +203,8 @@ counts only when its value has a credential shape (step 1). The
 1. **Shape**: the value has a credential shape (a catalog key shape such as
    `ghp_...`, `AKIA...` or a Google OAuth `ya29....` that clears its
    eligibility pattern, a JWT, a URL
-   with a password, a PEM private key) -> secret, reason `shape`.
+   with a password that is not empty or a placeholder, a PEM private key)
+   -> secret, reason `shape`.
 2. **Not a secret**: the value is empty, a number, a boolean
    (`true/false/yes/no/on/off`), a path (absolute, `~`, `./`, `../`, a drive
    letter, `$HOME/...`, or a `PATH`-style list of these) or a plain hostname

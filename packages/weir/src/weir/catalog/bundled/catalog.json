@@ -125,6 +125,71 @@
           "(?i)(ya29\\.|1(?:\\\\*/){2}[0-9]|GOCSPX-)(EXAMPLE|TEST|FAKE|DEMO|PLACEHOLDER|REDACTED).*"
         ]
       }
+    },
+    {
+      "name": "url_with_password",
+      "content_pattern": "(?:(?<!\\\\)\\b|(?<=\\\\[ntr]))[A-Za-z][A-Za-z0-9+.-]{0,31}+://[^\\s/?#:@\\[\\]'\\\"\\\\]{0,1024}+:(?!\\d{1,5}[?#])(?!(?:(?:\\$|%24)(?:\\{|%7[Bb])(?:[^}%\\s/@]|%(?!7[Dd]))*(?:\\}|%7[Dd])|(?:\\$|%24)[A-Za-z_][A-Za-z0-9_]*|(?:\\{|%7[Bb]){2}[^\\s/@]*(?:\\}|%7[Dd]){2}|(?:<|%3[Cc])(?:[^>%\\s/@]|%(?!3[Ee]))*(?:>|%3[Ee])|(?:%25|%)(?:\\(|%28)(?:[^)%\\s/@]|%(?!29))*(?:\\)|%29)[sd]|(?:%25|%)[sd]|(?:[*xX#._-]|%2[Aa]|%23)+|(?i:(?:my|your)?[_-]?(?:password|passwd|pass|pwd|secret)|changeme|example|placeholder|redacted|(?:\\[|%5b)redacted(?:\\]|%5d)|none|null|nil|undefined|true|false))@)([^\\s/@'\\\"\\\\]{1,1024}+)@[^\\s'\\\"\\\\<>]++",
+      "exposure": true,
+      "percent_decoded": true,
+      "exposure_prefix": "password",
+      "eligibility": {
+        "pattern": "[^\\r\\n]{12,1024}",
+        "min_distinct_chars": 8
+      }
+    },
+    {
+      "name": "aws_url_security_token",
+      "content_pattern": "(?<=[?&](?i:X-Amz-Security-Token)=)([^\\s&#'\"\\\\<>;,()\\[\\]{}]{16,8192}+)",
+      "exposure": true,
+      "percent_decoded": true,
+      "exposure_prefix": "X-Amz-Security-Token",
+      "eligibility": {
+        "pattern": "[A-Za-z0-9+/]{100,8192}={0,2}",
+        "min_distinct_chars": 8,
+        "reject_patterns": [
+          "(?i)(YOUR|EXAMPLE|TEST|FAKE|DEMO|PLACEHOLDER|REDACTED).*"
+        ]
+      }
+    },
+    {
+      "name": "aws_url_signature",
+      "content_pattern": "(?<=[?&](?i:X-Amz-Signature)=)([^\\s&#'\"\\\\<>;,()\\[\\]{}]{16,1024}+)",
+      "exposure": true,
+      "exposure_prefix": "X-Amz-Signature",
+      "eligibility": {
+        "pattern": "[0-9a-f]{64}",
+        "min_distinct_chars": 8,
+        "reject_patterns": [
+          "(?i)(x|0|#)+"
+        ]
+      }
+    },
+    {
+      "name": "google_url_signature",
+      "content_pattern": "(?<=[?&](?i:X-Goog-Signature)=)([^\\s&#'\"\\\\<>;,()\\[\\]{}]{16,4096}+)",
+      "exposure": true,
+      "exposure_prefix": "X-Goog-Signature",
+      "eligibility": {
+        "pattern": "[0-9a-f]{64,1024}",
+        "min_distinct_chars": 8,
+        "reject_patterns": [
+          "(?i)(x|0|#)+"
+        ]
+      }
+    },
+    {
+      "name": "azure_sas_signature",
+      "content_pattern": "(?:(?<![^\\s?&;='\"])|(?<=\\\\[ntr]))(?:s[ve]=[^\\s&#'\"\\\\<>;,()\\[\\]{}]{0,256}+(?:&(?!sig=)[^\\s&#'\"\\\\<>;,()\\[\\]{}]{0,256}+){0,31}&sig=|sig=(?=[^\\s&#'\"\\\\<>;,()\\[\\]{}]{0,4096}+(?:&(?!s[ve]=)[^\\s&#'\"\\\\<>;,()\\[\\]{}]{0,256}+){0,31}&s[ve]=))([^\\s&#'\"\\\\<>;,()\\[\\]{}]{16,4096}+)",
+      "exposure": true,
+      "percent_decoded": true,
+      "exposure_prefix": "sig",
+      "eligibility": {
+        "pattern": "[A-Za-z0-9+/]{43}=",
+        "min_distinct_chars": 8,
+        "reject_patterns": [
+          "(?i)(YOUR|EXAMPLE|TEST|FAKE|DEMO|PLACEHOLDER|REDACTED).*"
+        ]
+      }
     }
   ],
   "sinks": [

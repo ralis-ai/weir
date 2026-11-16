@@ -82,7 +82,14 @@ def name_suggests_secret(name: str) -> bool:
 
 
 _JWT = re.compile(r"eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}")
-_URL_WITH_PASSWORD = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://[^\s/:@'\"]*:[^\s/@'\"]+@[^\s'\"]+")
+# A URL holding a password, `scheme://user:password@host`, is the catalog's
+# `url_with_password` class, so the inventory and the exposure scan recognize
+# exactly the same URLs, an empty or placeholder password excluded. The
+# inventory keeps the whole URL as the value: an environment variable holds
+# the whole URL, and the same credential must fingerprint the same everywhere.
+URL_WITH_PASSWORD = re.compile(next(
+    spec.content_pattern for spec in DEFAULT_CATALOG.sources if spec.name == "url_with_password"
+))
 _PEM_PRIVATE_KEY = re.compile(
     r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]+?-----END [A-Z0-9 ]*PRIVATE KEY-----"
 )
@@ -102,7 +109,7 @@ def value_shape(value: str, catalog: Catalog = DEFAULT_CATALOG) -> str | None:
                 return spec.name
     if _JWT.fullmatch(value):
         return "jwt"
-    if _URL_WITH_PASSWORD.fullmatch(value):
+    if URL_WITH_PASSWORD.fullmatch(value):
         return "url_with_password"
     if _PEM_PRIVATE_KEY.fullmatch(value.strip()):
         return "private_key"
@@ -231,5 +238,5 @@ def looks_secret_shaped(text: str) -> bool:
         return True
     return any(
         pattern.search(text) is not None
-        for pattern in (_JWT, _URL_WITH_PASSWORD, _PEM_PRIVATE_KEY, *_CATALOG_KEY_PATTERNS)
+        for pattern in (_JWT, URL_WITH_PASSWORD, _PEM_PRIVATE_KEY, *_CATALOG_KEY_PATTERNS)
     )

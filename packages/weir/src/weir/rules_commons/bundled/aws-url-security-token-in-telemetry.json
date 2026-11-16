@@ -1,0 +1,10 @@
+{
+  "id": "aws-url-security-token-in-telemetry",
+  "version": "1.0.0",
+  "stage": "active",
+  "description": "A presigned AWS URL's X-Amz-Security-Token query parameter is present in exported telemetry (spec 2026-09-06): the session token travels with the URL.",
+  "source_class": "aws_url_security_token",
+  "sink_tool_name": null,
+  "mode": "exposure",
+  "severity": "high"
+}

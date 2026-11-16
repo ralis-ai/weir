@@ -40,16 +40,27 @@ Adding a source class needs three things, not one:
    text before it as the display prefix; a stray capturing group would make it
    record the wrong bytes. `aws_access_key_id` uses `(?:AKIA|ASIA)` for
    exactly this reason. The loader rejects an exposure class whose
-   `content_pattern` has more than one capturing group. Three of the nine
-   bundled exposure classes are assignment-shaped (`credential_field`,
-   `json_credential_field`, `bearer_token`); the other six have no capturing
-   group at all, so the scan records group(0), the whole match, as the value
-   for those instead. One group is also why a key=value field and a
-   JSON-quoted field are two classes: their values end differently (at the
-   first space, at the closing quote), and the group cannot tell which key
-   form came before it. An
+   `content_pattern` has more than one capturing group. Eight of the
+   fourteen bundled exposure classes are assignment-shaped
+   (`credential_field`, `json_credential_field`, `bearer_token` and the five
+   URL classes, `url_with_password` and the signed-URL parameters); the other
+   six have no capturing group at all, so the scan records group(0), the
+   whole match, as the value for those instead. One group is also why a
+   key=value field and a JSON-quoted field are two classes: their values end
+   differently (at the first space, at the closing quote), and the group
+   cannot tell which key form came before it. An
    assignment-shaped class may declare an eligibility floor, which then judges
    its group(1) value, as `bearer_token` does.
+
+   When the text before the value is not a fixed key name, set
+   `exposure_prefix`. A URL's user name and a whole query string are
+   arbitrary input, and a user name can itself be a token, so the URL
+   classes print a fixed head (`password`, `X-Amz-Signature`, `sig`) instead,
+   and `min_distinct_chars` counts their whole value. The signed-URL classes
+   whose parameter name is fixed match it in a lookbehind, so the match
+   starts at the value: an eligible value then sits inside the value of the
+   key-name hit `credential_field` makes of `X-Amz-Security-Token=` and
+   replaces it.
 
    `credential_field`'s and `json_credential_field`'s
    `eligibility.reject_patterns` (masked/None/null/REDACTED values) never

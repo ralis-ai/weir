@@ -37,7 +37,20 @@ _VALUES = {
     "json_credential_field": "api_key': 'FAKE-CANARY-7Rk2Ls9Vn4Xb'",
     "bearer_token": "Authorization: Bearer " + "FAKE" * 6,
     "google_oauth_credential": "ya29." + "FAKE" * 10,
+    "url_with_password": "postgres://app:FAKE-7Rk2Ls9Vn4Xb@db.example:5432/app",
+    "aws_url_security_token": "https://b.example/o?X-Amz-Security-Token=" + "FAKE" * 30,
+    "aws_url_signature": "https://b.example/o?X-Amz-Signature=" + "0" * 64,
+    "google_url_signature": "https://b.example/o?X-Goog-Signature=" + "0" * 64,
+    "azure_sas_signature": "https://a.example/c?sv=2022-11-02&se=2026-01-02&sig=" + "FAKE" * 11,
 }
+
+# A URL is anchored by its own syntax (`://`, `?`, `&`), not by a word
+# boundary: a letter glued before it extends the scheme or the path, and the
+# URL is still a URL. Their near-misses are in test_catalog_url_credentials.py.
+_URL_ANCHORED = frozenset({
+    "url_with_password", "aws_url_security_token", "aws_url_signature",
+    "google_url_signature", "azure_sas_signature",
+})
 
 _ESCAPED_SEPARATORS = ("\n", "\t", "\r")
 
@@ -88,7 +101,7 @@ def test_a_value_ends_at_the_escape_after_it(source_class: str, sep: str) -> Non
     assert _labels(source_class, json.dumps({"content": decoded})) == control
 
 
-@pytest.mark.parametrize("source_class", sorted(_VALUES))
+@pytest.mark.parametrize("source_class", sorted(set(_VALUES) - _URL_ANCHORED))
 def test_a_value_glued_to_an_ordinary_letter_is_still_not_labeled(source_class: str) -> None:
     # The escape is a boundary; a plain letter is not, even the letter an
     # escape ends in, and an uppercase lookalike escape is not an escape.

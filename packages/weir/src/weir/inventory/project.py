@@ -37,6 +37,7 @@ from weir.catalog import (
 from weir.inventory._scan import Hit, line_of
 from weir.inventory._types import NotScannedReason, Reason
 from weir.inventory.classify import (
+    URL_WITH_PASSWORD,
     is_dynamic,
     name_suggests_secret,
     not_secret_kind,
@@ -159,9 +160,7 @@ _STANDALONE: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("jwt", re.compile(
         r"(?:\b|(?<=\\[ntr]))eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"
     )),
-    ("url_with_password", re.compile(
-        r"(?:\b|(?<=\\[ntr]))[A-Za-z][A-Za-z0-9+.-]*://[^\s/:@'\"\\]*:[^\s/@'\"\\]+@[^\s'\"\\<>]+"
-    )),
+    ("url_with_password", URL_WITH_PASSWORD),
     ("private_key", re.compile(
         r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]+?-----END [A-Z0-9 ]*PRIVATE KEY-----"
     )),
@@ -178,10 +177,13 @@ def _unquote(raw: str) -> tuple[str, int, bool]:
 def _catalog_near_miss(value: str, catalog: Catalog) -> bool:
     """Has the value a catalog class's loose shape but fails its
     eligibility? Then it is that class's placeholder or a masked key
-    (`sk-proj-REDACTED...`, AWS's documented example), not a credential."""
+    (`sk-proj-REDACTED...`, AWS's documented example), not a credential.
+    An assignment-shaped class (a capturing group) is skipped: its floor
+    judges only the captured value, never a whole one."""
     return any(
         spec.exposure
         and spec.eligibility.pattern is not None
+        and not re.compile(spec.content_pattern).groups
         and re.fullmatch(spec.content_pattern, value) is not None
         and not is_verbatim_eligible(value, spec)
         for spec in catalog.sources

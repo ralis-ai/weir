@@ -96,3 +96,29 @@ def test_a_backslash_run_after_a_credential_key_scans_like_ordinary_input(
     scan(ordinary)()
     ratio = _best_time(scan(slow)) / _best_time(scan(ordinary))
     assert ratio < _MAX_RATIO, f"{ratio:.1f}x slower than ordinary input of the same size"
+
+
+# Input built to make the URL classes re-read it: a scheme start at every
+# dot, a SAS parameter that could open a sig search at every `&`, a sig
+# whose sibling search could run to the end, userinfo colons with no `@`.
+_URL_RUNS = {
+    "scheme-starts": lambda n: "a." * (n // 2),
+    "sas-siblings": lambda n: "se=a&" * (n // 5),
+    "sig-params": lambda n: "sig=a&" * (n // 6),
+    "userinfo-colons": lambda n: "a://b:" * (n // 6),
+    "query-names": lambda n: "?X-Amz-Signature=&" * (n // 18),
+}
+
+
+@pytest.mark.parametrize("run", sorted(_URL_RUNS))
+def test_url_shaped_input_scans_like_ordinary_input(run: str) -> None:
+    text = _URL_RUNS[run](_SIZE)
+    slow = _surface(text)
+    ordinary = _surface((_ORDINARY * (_SIZE // len(_ORDINARY) + 1))[: len(text)])
+
+    def scan(surface: ExposureSurface) -> Callable[[], list[ExposureHit]]:
+        return lambda: classify_exposure(surface, DEFAULT_CATALOG).hits
+
+    scan(ordinary)()
+    ratio = _best_time(scan(slow)) / _best_time(scan(ordinary))
+    assert ratio < _MAX_RATIO, f"{ratio:.1f}x slower than ordinary input of the same size"

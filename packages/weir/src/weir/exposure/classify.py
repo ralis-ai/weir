@@ -170,6 +170,8 @@ def _raw_hits_for(
             value = matched_value(match.group(0), spec)
             prefix = class_prefix(value)
             value_start, value_end = match.span(0)
+        if spec.exposure_prefix is not None:
+            prefix = spec.exposure_prefix
         eligible = is_verbatim_eligible(value, spec)
         if (
             not eligible

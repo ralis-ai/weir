@@ -1,0 +1,10 @@
+{
+  "id": "aws-url-signature-in-telemetry",
+  "version": "1.0.0",
+  "stage": "active",
+  "description": "A presigned AWS URL's X-Amz-Signature query parameter is present in exported telemetry (spec 2026-09-06): anyone holding the URL can use it until it expires.",
+  "source_class": "aws_url_signature",
+  "sink_tool_name": null,
+  "mode": "exposure",
+  "severity": "high"
+}

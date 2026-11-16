@@ -1,0 +1,10 @@
+{
+  "id": "azure-sas-signature-in-telemetry",
+  "version": "1.0.0",
+  "stage": "active",
+  "description": "An Azure shared access signature's sig parameter, beside its sv= or se= parameter, is present in exported telemetry (spec 2026-09-06): anyone holding the token can use it until it expires.",
+  "source_class": "azure_sas_signature",
+  "sink_tool_name": null,
+  "mode": "exposure",
+  "severity": "high"
+}

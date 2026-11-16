@@ -35,7 +35,8 @@ def class_prefix(value: str) -> str:
 
     ponytail: a list of heads, not catalog data. A contributor class with a
     longer literal prefix gets the 4-character fallback (safe for display)
-    until it is added here or the catalog grows an `exposure_prefix` field.
+    until it is added here or the class sets `exposure_prefix`, which the
+    exposure scan prints instead.
     Also assumes `value` has already cleared a length floor: on a very short
     string the fallback returns the whole thing.
     """
@@ -133,8 +134,10 @@ def is_verbatim_eligible(value: str, source: SourceSpec) -> bool:
         # constant across every value of that class, so counting it measures
         # the prefix's length rather than the secret's entropy - `sk-proj-`
         # alone supplies 7 distinct characters and would carry a zeroed key
-        # over a floor of 8.
-        suffix = value[len(_floor_prefix(value)) :]
+        # over a floor of 8. A class with an `exposure_prefix` has no head
+        # inside its value, so the whole value counts.
+        head = 0 if source.exposure_prefix is not None else len(_floor_prefix(value))
+        suffix = value[head:]
         if len(set(suffix)) < eligibility.min_distinct_chars:
             return False
     return not any(re.fullmatch(p, value) is not None for p in eligibility.reject_patterns)

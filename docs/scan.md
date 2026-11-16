@@ -35,7 +35,28 @@ real value after it (`["REDACTED", "..."]` is not found). Under the key
 `token` alone the value counts only when it has both a letter and a digit of
 its own (an escape sequence such as `\n` or `\u0041` counts as neither), so
 a logprobs `"token": "Certainly"` is not one, in any language. A key-name match has no shape to check, so it goes to
-the review queue rather than failing the scan. In a span it reads the span
+the review queue rather than failing the scan. It also reports a credential
+held inside a URL: the password in a URL's userinfo
+(`postgres://user:password@host`, read up to the `@`, so an unencoded `#` or
+`?` is part of it, but a port followed directly by a query or fragment, as in
+`http://localhost:3000?email=a@b.example` or `http://[::1]:3000?email=...`,
+is not a password; a password that starts with 1 to 5 digits and then `#`
+or `?`, as in `postgres://app:2024#rest@host`, reads the same as such a port
+and is not reported either) and the credential query parameters of a signed
+URL, `X-Amz-Security-Token` and `X-Amz-Signature` (AWS), `X-Goog-Signature`
+(Google Cloud Storage) and `sig` (an Azure shared access signature). The Amz and Goog names count only as query parameters, after `?`
+or `&`, and `sig` only beside an `sv=` or `se=` parameter of the same query,
+so a bare `sig=` is not one. Each value is judged percent-decoded. A password
+of 12 or more characters with 8 or more different characters fails the scan,
+a shorter or less varied one goes to the review queue, and an empty or
+placeholder password (`${DB_PASSWORD}`, `<password>`, `***`, `changeme`),
+percent-encoded or not, is not reported. A signed-URL value fails the scan
+when it has its credential's shape (64 hex characters for `X-Amz-Signature`,
+64 to 1024 for `X-Goog-Signature`, 43 base64 characters and `=` for `sig`,
+100 or more base64 characters for a session token) and goes to the review
+queue when it does not. The hit is shown as the parameter name, or `password`, followed
+on a hit that fails the scan by the value's last four characters, never by
+the URL's user name or the rest of its query. In a span it reads the span
 name and `traceState`, the attributes, each event's name and attributes,
 each link's `traceState` and attributes, the status message, and around it
 the resource's `schemaUrl`, attributes and `entityRefs` (each one's

@@ -85,7 +85,7 @@ def test_the_documented_aws_example_key_is_rejected() -> None:
     assert not is_verbatim_eligible("AKIAIOSFODNN7EXAMPLE", _source("aws_access_key_id"))
 
 
-def test_exposure_classes_are_exactly_the_declared_nine() -> None:
+def test_exposure_classes_are_exactly_the_declared_fourteen() -> None:
     assert {s.name for s in DEFAULT_CATALOG.sources if s.exposure} == {
         "openai_api_key",
         "anthropic_api_key",
@@ -96,6 +96,11 @@ def test_exposure_classes_are_exactly_the_declared_nine() -> None:
         "json_credential_field",
         "bearer_token",
         "google_oauth_credential",
+        "url_with_password",
+        "aws_url_security_token",
+        "aws_url_signature",
+        "google_url_signature",
+        "azure_sas_signature",
     }
 
 

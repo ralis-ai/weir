@@ -26,6 +26,41 @@
   call to run. `weir statusline setup` offers it beside the redaction hook,
   added only on an exact `yes` to `Add the command guard too?`, and `undo`
   takes it out ([docs/statusline.md](docs/statusline.md#the-command-guard)).
+- **`weir scan` reports credentials inside URLs** (`weir-scan`). Wherever
+  the scan reads text, in an attribute value or key, a span name or a log
+  body, it now finds the password in a URL's userinfo
+  (`scheme://user:password@host`, rule `url-password-in-telemetry`) and the
+  credential query parameters of signed URLs: `X-Amz-Security-Token` and
+  `X-Amz-Signature` (rules `aws-url-security-token-in-telemetry`,
+  `aws-url-signature-in-telemetry`), `X-Goog-Signature`
+  (`google-url-signature-in-telemetry`) and an Azure SAS `sig`
+  (`azure-sas-signature-in-telemetry`), the last only beside an `sv=` or
+  `se=` parameter of the same query. Values are judged percent-decoded. A
+  password of 12 or more characters with 8 or more different characters
+  fails the scan, a shorter or less varied one goes to the review queue, and
+  an empty or placeholder password, percent-encoded or not, is not
+  reported. A signed-URL value with its credential's shape fails the scan;
+  one without it goes to the review queue. A hit is shown by its parameter
+  name, or `password`, never by the URL's user name or the rest of its
+  query. A presigned AWS URL's session token was before only a review-queue
+  line under the key name `Token` whose value ran on to the end of the
+  query ([docs/scan.md](docs/scan.md)).
+
+### Changed
+- **`weir inventory` reads a URL with a password from the catalog**
+  (`weir-scan`). The shape is the catalog's `url_with_password` class, the
+  one `weir scan` uses, so the two recognize the same URLs: a URL whose
+  password is empty or a placeholder (`${DB_PASSWORD}`, `<password>`,
+  `***`, `changeme`) is no longer listed, and a URL right after a JSON `\n`,
+  `\t` or `\r` escape no longer takes the escape's letter into its scheme.
+  A password may hold an unencoded `#` or `?`, but a port followed directly
+  by a query or fragment (`http://localhost:3000?email=a@b.example`, also
+  after a bracketed IPv6 host) is not read as a password. A password that
+  starts with 1 to 5 digits and then `#` or `?`
+  (`postgres://app:2024#rest@host`) reads the same as such a port, so it is
+  not reported. The inventory also finds the signed-URL credentials above in
+  project files. The value of a URL credential is still the whole URL
+  ([docs/inventory.md](docs/inventory.md)).
 
 ## [0.10.0] - 2026-11-12
 

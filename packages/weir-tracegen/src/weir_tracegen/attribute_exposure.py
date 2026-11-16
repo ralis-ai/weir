@@ -133,14 +133,30 @@ def render_document() -> dict[str, Any]:
     keys = ["ghp_" + "FAKE" * 9, "sk-proj-" + "FAKE" * 9, "sk-ant-api03-" + "FAKE" * 16,
             "AKIAIOSFODNN7EXAMPLE", "AIza" + "FAKE" * 9,
             "Authorization: Bearer " + "FAKE" * 6, "ya29." + "FAKE" * 10]
+    # Credentials inside URLs, one per class, each below its class's floor (a
+    # short password, FAKE padding, a zeroed signature) so they too reach the
+    # review queue. A letter glued before a URL only lengthens its scheme or
+    # path, so their near-misses are URLs without the shape instead: a
+    # placeholder password, a `sig` with no SAS parameter beside it, and the
+    # signed-URL names outside a query string.
+    urls = ["postgres://app:Rk2Ls9@db.internal:5432/orders",
+            "https://b.example/o?X-Amz-Security-Token=" + "FAKE" * 30,
+            "https://b.example/o?X-Amz-Signature=" + "0" * 64,
+            "https://b.example/o?X-Goog-Signature=" + "0" * 64,
+            "https://a.example/c?sv=2022-11-02&se=2026-01-02&sig=" + "FAKE" * 11]
+    url_near_misses = ["postgres://app:${DB_PASSWORD}@db.internal:5432/orders",
+                       "https://api.example/items?page=2&sig=" + "FAKE" * 11,
+                       "X-Amz-Signature=" + "0" * 64, "X-Goog-Signature: " + "0" * 64]
     for index, (span_id, content, file_path) in enumerate([
         ("6666666666666666", "DEBUG=1\nAPI_KEY=FAKE-CANARY-7Rk2Ls9Vn4Xb\n", ".env"),
         ("7777777777777777", "import os\nmytoken = os.environ[\"TOKEN\"]\n", "send.py"),
         ("8888888888888888",
          "# rotated keys\n{}\n\t{}\r\n{}\n{}\n{}\n{}\n\t{}\n".format(*keys)
-         + '{"api_key": "FAKE-CANARY-7Rk2Ls9Vn4Xb"}\n', "keys.txt"),
+         + '{"api_key": "FAKE-CANARY-7Rk2Ls9Vn4Xb"}\n'
+         + "{}\n\t{}\n{}\r\n{}\n\t{}\n".format(*urls), "keys.txt"),
         ("9999999999999999",
-         "# not keys\n" + "".join(f"x{key}\n" for key in keys), "notes.txt"),
+         "# not keys\n" + "".join(f"x{key}\n" for key in keys)
+         + "".join(f"{url}\n" for url in url_near_misses), "notes.txt"),
     ], start=5):
         tool_start = _BASE_NANOS + index * _STEP_NANOS
         spans.append({

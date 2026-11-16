@@ -60,6 +60,13 @@ class SourceSpec(msgspec.Struct, frozen=True):
     # (`Bearer%20ab%2Fcd...`) gets the claim of the token it stands for
     # (`Bearer ab/cd...`), never one over its escapes.
     percent_decoded: bool = False
+    # Set for a class whose value carries no head of its own: a URL's
+    # password, a signed URL's signature. The exposure scan prints this fixed
+    # head before `…last4` instead of the text before the value, which for
+    # these classes is arbitrary input (a URL's user name, a whole query
+    # string) and is never printed. `min_distinct_chars` then counts the
+    # whole value, since there is no head to strip from it.
+    exposure_prefix: str | None = None
 
 
 class SinkSpec(msgspec.Struct, frozen=True):
