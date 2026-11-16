@@ -324,6 +324,12 @@ Its limits:
   content", Claude Code hooks reference, WebFetch input): a key in the page
   has been read by that model before the hook runs, and the hook replaces
   it only where that text repeats it.
+- A result delivered as a task notification is not a tool result, so no
+  `PostToolUse` hook, this one included, can rewrite it. An MCP tool call
+  still running after two minutes moves to a background task, and its
+  result arrives that way ([MCP
+  docs](https://code.claude.com/docs/en/mcp), "Automatic backgrounding of
+  long tool calls").
 
 ## The command guard
 
@@ -769,6 +775,9 @@ user owns, or that others can read or write, is refused, never repaired.
   a credential from reaching the agent: the hook only in the tool results it
   covers, the guard only for the commands it matches, each within its limits
   (above).
+- A result delivered as a task notification, such as that of an MCP tool
+  call Claude Code moved to a background task, is not a tool result, so no
+  `PostToolUse` hook, the redaction hook included, can rewrite it.
 - A long record not searched whole within its time bound in three tries
   in a row, each cancelled or out of time, leaves the session partly
   checked rather than counted, where `weir audit` of the whole file counts
