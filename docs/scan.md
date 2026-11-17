@@ -108,7 +108,9 @@ JSON document held as a string inside it is decoded by the next.
 
 - A key found this way is reported at the same span or log record and
   location as the string it sits in, exactly as if it had been written
-  plainly there. A key found both as written and decoded is one finding.
+  plainly there. A key found both as written and decoded is one finding:
+  where an escape lies inside or right next to a match, the decoded
+  reading decides; a match that no escape touches is decided as written.
 - Every JSON escape is undone, not only `\uXXXX`: `\n`, `\t`, `\"`, `\\`
   and `\/` too. So JSON text that holds any escape can gain findings,
   triage findings included, that the text as written does not give, and

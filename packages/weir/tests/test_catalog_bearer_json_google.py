@@ -165,10 +165,10 @@ def test_an_escaped_slash_does_not_hide_a_token(form: str) -> None:
     written = value
     for _ in range(layers):
         written = _slashes(json.dumps(written)[1:-1])
-    # The hit is the value's bytes as the span holds them, at any depth.
+    # The decoded reading decides: the hit is the value decoded, not escaped.
     hits = _hits(build())
     source_class = "bearer_token" if value == SLASH_TOKEN else "google_oauth_credential"
-    assert _claims(hits) == [_claim(written, source_class, eligible=True)]
+    assert _claims(hits) == [_claim(value, source_class, eligible=True)]
     assert len(hits[0].prefix) < THRESHOLD or hits[0].prefix == "Authorization: Bearer"
 
 
@@ -261,9 +261,16 @@ def test_a_json_quoted_value_runs_to_its_closing_quote(form: str) -> None:
     "value", ["abc\\u00e9123456", "123456\\u00e9abc", "abc\\U0001f600123"]
 )
 def test_a_token_value_with_escapes_counts_its_literal_letters_and_digits(value: str) -> None:
-    # The only digits, or the only letters, come after the escape.
+    # The only digits, or the only letters, come after the escape. When the
+    # escape is a valid JSON escape, the decoded reading decides (OPTION B).
+    from weir.json_escapes import unescape
+
+    decoded = unescape(value.encode("utf-8", "surrogatepass")).decode(
+        "utf-8", "surrogatepass"
+    )
+    expected = decoded if decoded != value else value
     assert _claims(_hits(f'{{"token": "{value}"}}')) == [
-        _claim(value, "json_credential_field", eligible=False)
+        _claim(expected, "json_credential_field", eligible=False)
     ]
 
 
@@ -308,9 +315,8 @@ def test_an_escaped_backslash_stays_inside_a_credential_field_value(form: str) -
     build, layers, source_class = _BACKSLASH_FORMS[form]
     hits = _hits(build(_BACKSLASH_VALUE))
     # A Write tool argument carries the value JSON-encoded, so the span holds
-    # its escaped bytes; an escaped backslash is part of the value, not its end.
-    expected = _encoded(_BACKSLASH_VALUE, layers)
-    assert _claims(hits) == [_claim(expected, source_class, eligible=False)]
+    # its escaped bytes; the decoded reading gives back the original value.
+    assert _claims(hits) == [_claim(_BACKSLASH_VALUE, source_class, eligible=False)]
 
 
 _GOOGLE_FORMS = {

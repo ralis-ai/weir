@@ -411,7 +411,7 @@ def test_text_escaped_past_the_bound_is_counted_as_not_scanned() -> None:
     out = _cli(body)
     line = "exposure scan: 2 values not scanned - not in a shape the scan reads"
     assert line in str(out["scan"]).splitlines()
-    assert out["exit"] == 0
+    assert out["exit"] == 3
     gauge = out["gauge"]
     assert isinstance(gauge, list)
     assert line in gauge

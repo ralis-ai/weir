@@ -79,6 +79,10 @@ class ScannedString(msgspec.Struct, frozen=True):
     # on. Each is read like `text`, at the same span and location; empty for
     # a string holding no escaped JSON. Value-carrying, like `text`.
     decoded: tuple[tuple[str, ...], ...] = ()
+    # Per decoded text, a per-character mask: True where the character was
+    # decoded from a JSON escape in the previous level's text. Parallel to
+    # `decoded`: decoded_masks[i][j] has len(decoded[i][j]) booleans.
+    decoded_masks: tuple[tuple[tuple[bool, ...], ...], ...] = ()
 
 
 class ExposureSurface(msgspec.Struct, frozen=True):

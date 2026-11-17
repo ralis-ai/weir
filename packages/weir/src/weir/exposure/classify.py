@@ -6,7 +6,11 @@ The strings arrive already enumerated by `weir.adapters.otel.exposure`, which
 is why this module needs no wire model and never imports `weir.adapters` - the
 "Analysis-path purity" contract holds it to that. Each string is read as
 written and through its decoded view (docs/scan.md, "JSON escapes"), which
-the walk hands over beside it.
+the walk hands over beside it. The two readings are reconciled by the
+escape-locality rule: a match that no escape lies inside or right next to
+is decided as written; where an escape lies inside or right next to a match,
+the decoded reading decides; and a decoded match that no escape touched is
+the written one again and adds nothing.
 
 This is also the one place the matched values and the names they sit under
 are both in hand, so it is where a span id, span name or location key that
@@ -16,6 +20,7 @@ Every renderer downstream prints hits as they are and cannot get a name back.
 
 from __future__ import annotations
 
+import bisect
 import hashlib
 import re
 from collections.abc import Callable
@@ -36,7 +41,7 @@ from weir.catalog import (
     matched_value,
 )
 from weir.exposure._types import ExposureHit, ExposureScan
-from weir.json_escapes import LEVELS, decoded_view
+from weir.json_escapes import unescape
 from weir.schema.exposure import ExposureSurface, ScannedString, Segment, format_location
 
 FINGERPRINT_VERSION = 1
@@ -198,117 +203,104 @@ def _candidates(text: str, classes: _Classes) -> list[_Candidate]:
     return [cand._replace(subsumed=_subsumed(cand, candidates)) for cand in candidates]
 
 
-# An escape cut short at the end of a match: a class's length bound can end
-# a match inside one.
-_CUT_ESCAPE = re.compile(r"\\(?:u[0-9a-fA-F]{0,3})?\Z")
+# The str form of the JSON escape regex (`weir.json_escapes._ESCAPE`),
+# same pattern, used to find escape character spans in the read string.
+_ESCAPE_RE = re.compile(
+    r"\\(?:"
+    r"u[dD][89abAB][0-9a-fA-F]{2}\\u[dD][c-fC-F][0-9a-fA-F]{2}"
+    r"|u[0-9a-fA-F]{4}"
+    r'|["\\/bfnrt]'
+    r")"
+)
 
 
-def _plain(value: str) -> str:
-    """`value` with its JSON escapes undone as far as the decoded view goes,
-    less an escape cut short at its end."""
-    texts = decoded_view(value.encode("utf-8", errors="surrogatepass")).texts
-    plain = texts[-1].decode("utf-8", errors="surrogatepass") if texts else value
-    return _CUT_ESCAPE.sub("", plain)
+def _escape_spans(text: str) -> tuple[list[int], list[int]]:
+    """Sorted start and end lists of JSON escape spans in `text`."""
+    starts: list[int] = []
+    ends: list[int] = []
+    for m in _ESCAPE_RE.finditer(text):
+        starts.append(m.start())
+        ends.append(m.end())
+    return starts, ends
 
 
-# Text cut short reads plainly like the whole text but for its end: an
-# escape is at most 12 characters (a surrogate pair), so each unescaping
-# changes at most 11 more characters before the cut.
-_CUT_MARGIN = 11 * LEVELS
+def _escape_near(
+    starts: list[int], ends: list[int], value_start: int, value_end: int,
+) -> bool:
+    """Whether any escape span overlaps with [value_start - 1, value_end]."""
+    lo = value_start - 1
+    j = bisect.bisect_right(ends, lo)
+    return j < len(starts) and starts[j] <= value_end
 
 
-def _plain_from(text: str, start: int, length: int) -> str:
-    """`text` from `start` read plainly, at least `length` characters of it
-    when it has them: decoded over a window, never the whole text."""
-    span = length + _CUT_MARGIN
-    while start + span < len(text):
-        plain = _plain(text[start : start + span])
-        if len(plain) >= length + _CUT_MARGIN:
-            return plain[: len(plain) - _CUT_MARGIN]
-        span *= 2
-    return _plain(text[start:])
+def _mask_near(mask: tuple[bool, ...], value_start: int, value_end: int) -> bool:
+    """Whether any mask position in [value_start - 1, value_end] is True."""
+    lo = max(0, value_start - 1)
+    hi = min(len(mask), value_end + 1)
+    return any(mask[lo:hi])
 
 
-def _claims(found: list[tuple[int, str, _Candidate]]) -> list[tuple[int, _Candidate]]:
-    """One string's matches across its texts, one per claim. Read plainly
-    (`_plain`), a credential is the same claim in every text that holds it:
-    it is kept at the fewest unescapings that hold it, so the value as
-    written stands wherever the text itself holds it (a token with `\\/` for
-    `/` keeps that spelling). And a match the decoded view reads further
-    is the claim its own class makes there: an escape inside a key cuts the
-    key short as written (`sk-proj-Qh7R\\u006b...` matches up to the
-    escape), and under a credential field name the field match as written
-    is subsumed only where read plainly the key lies inside its value. So a
-    match with an escape in or right after its value is dropped when a text
-    with more unescapings holds a reading of its class whose value starts
-    with its value - longer, or equal and subsumed or eligible where the
-    match is not - and its own text, read plainly, holds that reading over
-    it. A longer credential elsewhere that merely starts with its value, or
-    one of another class, leaves it standing."""
-    if all(level == 0 for level, _, _ in found):
-        return [(level, cand) for level, _, cand in found if not cand.subsumed]
-    read = [(level, text, cand, _plain(cand.value)) for level, text, cand in found]
-    # Per class, each plain value read with the most unescapings that hold
-    # it at all, subsumed, and eligible, and every length a value has; and
-    # the fewest unescapings that hold each eligible claim.
-    readings: dict[str, dict[str, list[int]]] = {}
-    lengths: dict[str, set[int]] = {}
-    fewest: dict[tuple[str, str], int] = {}
-    for level, _, cand, value in read:
-        name = cand.spec.name
-        deepest = readings.setdefault(name, {}).setdefault(value, [-1, -1, -1])
-        deepest[0] = max(deepest[0], level)
-        if cand.subsumed:
-            deepest[1] = max(deepest[1], level)
-        if cand.eligible:
-            deepest[2] = max(deepest[2], level)
-        lengths.setdefault(name, set()).add(len(value))
-        if cand.eligible and not cand.subsumed:
-            claim = (name, value)
-            fewest[claim] = min(level, fewest.get(claim, level))
+def _claims(
+    found: list[tuple[int, str, _Candidate, tuple[bool, ...] | None]],
+) -> list[tuple[int, _Candidate]]:
+    """One string's matches across its texts, one per claim.
 
-    def covered(text: str, cand: _Candidate, level: int, value: str) -> bool:
-        name = cand.spec.name
-        tail = _plain_from(text, cand.value_start, max(lengths[name]))
-        if not tail.startswith(value):
-            return False
-        for length in lengths[name]:
-            if length < len(value) or length > len(tail):
-                continue
-            deepest = readings[name].get(tail[:length])
-            if deepest is None:
-                continue
-            if length > len(value):
-                if deepest[0] > level:
-                    return True
-            elif deepest[1] > level or (not cand.eligible and deepest[2] > level):
-                return True
-        return False
+    The escape-locality rule: a match that no escape lies inside or right
+    next to is decided as written (exactly the result for it without the
+    decoded view).  Where an escape lies inside or right next to a match,
+    the decoded reading decides.  And a decoded match that no escape
+    touched is the written one again and adds nothing.
+    """
+    if all(level == 0 for level, _, _, _ in found):
+        return [(level, cand) for level, _, cand, _ in found if not cand.subsumed]
+
+    level0_text = next((text for level, text, _, _ in found if level == 0), None)
+    if level0_text is not None:
+        esc_starts, esc_ends = _escape_spans(level0_text)
+    else:
+        esc_starts, esc_ends = [], []
 
     kept: list[tuple[int, _Candidate]] = []
-    for level, text, cand, value in read:
+    for level, _text, cand, mask in found:
         if cand.subsumed:
             continue
-        if cand.eligible and fewest[(cand.spec.name, value)] < level:
+        if level == 0:
+            if not _escape_near(esc_starts, esc_ends, cand.value_start, cand.value_end):
+                kept.append((level, cand))
+        else:
+            if mask is not None and _mask_near(mask, cand.value_start, cand.value_end):
+                kept.append((level, cand))
+
+    final: list[tuple[int, _Candidate]] = []
+    for level, cand in kept:
+        if level == 0:
+            final.append((level, cand))
             continue
-        if "\\" in text[cand.value_start : cand.value_end + 1] and covered(
-            text, cand, level, value
+        unesc = unescape(
+            cand.value.encode("utf-8", "surrogatepass")
+        ).decode("utf-8", "surrogatepass")
+        if unesc != cand.value and any(
+            ol > level and oc.spec.name == cand.spec.name and oc.value == unesc
+            for ol, oc in kept
         ):
             continue
-        kept.append((level, cand))
-    return kept
+        final.append((level, cand))
+    return final
 
 
 def _raw_hits_for(scanned: ScannedString, classes: _Classes) -> list[_RawHit]:
     """The string's matches as written, then those of its decoded view
     (`ScannedString.decoded`), each text read the same way and reported at
     the string's own span and location."""
-    texts = [(0, scanned.text)] + [
-        (level, text) for view in scanned.decoded for level, text in enumerate(view, start=1)
-    ]
-    found = [
-        (level, read, cand)
-        for level, text in texts
+    header_len = len(scanned.header) + 2 if scanned.header is not None else 0
+    items: list[tuple[int, str, tuple[bool, ...] | None]] = [(0, scanned.text, None)]
+    for view, view_masks in zip(scanned.decoded, scanned.decoded_masks, strict=True):
+        for (level, text), text_mask in zip(enumerate(view, start=1), view_masks, strict=True):
+            read_mask = (False,) * header_len + text_mask
+            items.append((level, text, read_mask))
+    found: list[tuple[int, str, _Candidate, tuple[bool, ...] | None]] = [
+        (level, read, cand, mask)
+        for level, text, mask in items
         for read in [text if scanned.header is None else f"{scanned.header}: {text}"]
         for cand in _candidates(read, classes)
     ]
@@ -316,7 +308,8 @@ def _raw_hits_for(scanned: ScannedString, classes: _Classes) -> list[_RawHit]:
         _RawHit(
             record_index=scanned.record_index, span_ref=scanned.span_ref,
             span_name=scanned.span_name, log_record=scanned.log_record,
-            path=scanned.path, key=scanned.key, location=scanned.location, unescapings=level, start=cand.start,
+            path=scanned.path, key=scanned.key, location=scanned.location,
+            unescapings=level, start=cand.start,
             spec=cand.spec, value=cand.value, prefix=cand.prefix, eligible=cand.eligible,
         )
         for level, cand in _claims(found)

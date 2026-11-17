@@ -35,7 +35,7 @@ import msgspec
 
 from weir.adapters.otel._wire import LogRecordInContext, SpanInContext, WireInput
 from weir.canary.walk import decode_bytes_value
-from weir.json_escapes import decoded_view
+from weir.json_escapes import LEVELS, unescape_map
 from weir.schema.exposure import ExposureSurface, ScannedString, Segment
 
 # ponytail: hard depth cap. Real OTLP kvlists are one or two levels deep;
@@ -180,18 +180,55 @@ def _json_texts(text: str) -> list[str]:
     return texts
 
 
-def _decoded(text: str) -> tuple[_Views, bool]:
-    """The decoded view of each JSON text `text` holds, and whether every
-    view read its text in full. A lone surrogate a JSON string may hold
-    round-trips as itself."""
+_Masks = tuple[tuple[tuple[bool, ...], ...], ...]
+
+
+def _char_mask(decoded_bytes: bytes, byte_mask: tuple[bool, ...]) -> tuple[bool, ...]:
+    """Byte-level escape mask to character-level mask for UTF-8 text."""
+    result: list[bool] = []
+    i = 0
+    while i < len(decoded_bytes):
+        b = decoded_bytes[i]
+        if b < 0x80:
+            clen = 1
+        elif b < 0xE0:
+            clen = 2
+        elif b < 0xF0:
+            clen = 3
+        else:
+            clen = 4
+        clen = min(clen, len(decoded_bytes) - i)
+        result.append(any(byte_mask[i : i + clen]))
+        i += clen
+    return tuple(result)
+
+
+def _decoded(text: str) -> tuple[_Views, _Masks, bool]:
+    """The decoded view of each JSON text `text` holds, its per-character
+    escape masks, and whether every view read its text in full. A lone
+    surrogate a JSON string may hold round-trips as itself."""
     views: list[tuple[str, ...]] = []
+    masks: list[tuple[tuple[bool, ...], ...]] = []
     complete = True
     for json_text in _json_texts(text):
-        view = decoded_view(json_text.encode("utf-8", errors="surrogatepass"))
-        complete = complete and view.complete
-        if view.texts:
-            views.append(tuple(t.decode("utf-8", errors="surrogatepass") for t in view.texts))
-    return tuple(views), complete
+        data = json_text.encode("utf-8", errors="surrogatepass")
+        texts: list[str] = []
+        level_masks: list[tuple[bool, ...]] = []
+        while b"\\" in data:
+            decoded_bytes, byte_mask = unescape_map(data)
+            if len(decoded_bytes) == len(data):
+                break
+            if len(texts) == LEVELS:
+                complete = False
+                break
+            decoded_str = decoded_bytes.decode("utf-8", errors="surrogatepass")
+            texts.append(decoded_str)
+            level_masks.append(_char_mask(decoded_bytes, byte_mask))
+            data = decoded_bytes
+        if texts:
+            views.append(tuple(texts))
+            masks.append(tuple(level_masks))
+    return tuple(views), tuple(masks), complete
 
 
 def _bytes_text(value: object) -> str | None:
@@ -436,18 +473,18 @@ def scan_surface(wire: WireInput) -> ExposureSurface:
     strings: list[ScannedString] = []
     unread = wire.values_not_scanned
 
-    def readable(found: list[_Found]) -> list[tuple[_Found, str, _Views]]:
+    def readable(found: list[_Found]) -> list[tuple[_Found, str, _Views, _Masks]]:
         """The strings read, each with its decoded view. A value the scan
         cannot read, or whose view stops at the bound, is not scanned."""
         nonlocal unread
-        out: list[tuple[_Found, str, _Views]] = []
+        out: list[tuple[_Found, str, _Views, _Masks]] = []
         for f in found:
             if f.text is None:
                 unread += 1
                 continue
-            decoded, complete = _decoded(f.text)
+            decoded, dmasks, complete = _decoded(f.text)
             unread += not complete
-            out.append((f, f.text, decoded))
+            out.append((f, f.text, decoded, dmasks))
         return out
 
     for span_index, ctx in enumerate(wire.spans):
@@ -465,8 +502,9 @@ def scan_surface(wire: WireInput) -> ExposureSurface:
                 header=f.header,
                 key=f.key,
                 decoded=decoded,
+                decoded_masks=dmasks,
             )
-            for f, text, decoded in found
+            for f, text, decoded, dmasks in found
         )
     for log_index, ctx in enumerate(wire.log_records):
         found = readable(
@@ -483,8 +521,9 @@ def scan_surface(wire: WireInput) -> ExposureSurface:
                 log_record=ctx.position,
                 key=f.key,
                 decoded=decoded,
+                decoded_masks=dmasks,
             )
-            for f, text, decoded in found
+            for f, text, decoded, dmasks in found
         )
 
     return ExposureSurface(
