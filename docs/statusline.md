@@ -330,6 +330,11 @@ Its limits:
   result arrives that way ([MCP
   docs](https://code.claude.com/docs/en/mcp), "Automatic backgrounding of
   long tool calls").
+- A background MCP result is matched only where its text is not
+  HTML-escaped. Claude Code 2.1.325 writes `&`, `<` and `>` in the
+  result as `&amp;`, `&lt;` and `&gt;` in the task notification stored
+  in the session file. A key holding any of those characters appears
+  only in its escaped form, so the status line does not find it.
 
 ## The command guard
 
