@@ -110,7 +110,7 @@ def _literal_prefix(pattern: str) -> str:
     every tie - correct, since neither is a prefix refinement of anything."""
     for boundary in _LEADING_BOUNDARIES:
         if pattern.startswith(boundary):
-            pattern = pattern[len(boundary):]
+            pattern = pattern[len(boundary) :]
             break
     out: list[str] = []
     for ch in pattern:
@@ -225,7 +225,10 @@ def _escape_spans(text: str) -> tuple[list[int], list[int]]:
 
 
 def _escape_near(
-    starts: list[int], ends: list[int], value_start: int, value_end: int,
+    starts: list[int],
+    ends: list[int],
+    value_start: int,
+    value_end: int,
 ) -> bool:
     """Whether any escape span overlaps with [value_start - 1, value_end]."""
     lo = value_start - 1
@@ -276,12 +279,11 @@ def _claims(
         if level == 0:
             final.append((level, cand))
             continue
-        unesc = unescape(
-            cand.value.encode("utf-8", "surrogatepass")
-        ).decode("utf-8", "surrogatepass")
+        unesc = unescape(cand.value.encode("utf-8", "surrogatepass")).decode(
+            "utf-8", "surrogatepass"
+        )
         if unesc != cand.value and any(
-            ol > level and oc.spec.name == cand.spec.name and oc.value == unesc
-            for ol, oc in kept
+            ol > level and oc.spec.name == cand.spec.name and oc.value == unesc for ol, oc in kept
         ):
             continue
         final.append((level, cand))
@@ -306,11 +308,19 @@ def _raw_hits_for(scanned: ScannedString, classes: _Classes) -> list[_RawHit]:
     ]
     return [
         _RawHit(
-            record_index=scanned.record_index, span_ref=scanned.span_ref,
-            span_name=scanned.span_name, log_record=scanned.log_record,
-            path=scanned.path, key=scanned.key, location=scanned.location,
-            unescapings=level, start=cand.start,
-            spec=cand.spec, value=cand.value, prefix=cand.prefix, eligible=cand.eligible,
+            record_index=scanned.record_index,
+            span_ref=scanned.span_ref,
+            span_name=scanned.span_name,
+            log_record=scanned.log_record,
+            path=scanned.path,
+            key=scanned.key,
+            location=scanned.location,
+            unescapings=level,
+            start=cand.start,
+            spec=cand.spec,
+            value=cand.value,
+            prefix=cand.prefix,
+            eligible=cand.eligible,
         )
         for level, cand in _claims(found)
     ]
@@ -399,30 +409,32 @@ def classify_exposure(surface: ExposureSurface, catalog: Catalog) -> ExposureSca
         if key in seen:
             continue
         seen.add(key)
-        hits.append(ExposureHit(
-            span_ref=withhold_id(hit.span_ref),
-            span_name=withhold(hit.span_name),
-            location=format_location(hit.path, withhold, key=hit.key),
-            span_key=span_keys.setdefault(hit.span_ref, len(span_keys)),
-            site_key=site_keys.setdefault(
-                (hit.span_ref, hit.log_record, hit.location), len(site_keys)
-            ),
-            source_class=hit.spec.name,
-            eligible=hit.eligible,
-            value_len=len(hit.value),
-            prefix=hit.prefix,
-            # Never emit a suffix that could reconstruct a short value: the
-            # bundled classes are all >= 20 chars, but a contributed catalog
-            # sets its own floor and G4 must not depend on it.
-            last4=(
-                hit.value[-4:]
-                if hit.eligible and len(hit.value) >= _MIN_LAST4_VALUE_LEN
-                else None
-            ),
-            fingerprint=fingerprint,
-            fingerprint_v=FINGERPRINT_VERSION,
-            log_record=hit.log_record,
-        ))
+        hits.append(
+            ExposureHit(
+                span_ref=withhold_id(hit.span_ref),
+                span_name=withhold(hit.span_name),
+                location=format_location(hit.path, withhold, key=hit.key),
+                span_key=span_keys.setdefault(hit.span_ref, len(span_keys)),
+                site_key=site_keys.setdefault(
+                    (hit.span_ref, hit.log_record, hit.location), len(site_keys)
+                ),
+                source_class=hit.spec.name,
+                eligible=hit.eligible,
+                value_len=len(hit.value),
+                prefix=hit.prefix,
+                # Never emit a suffix that could reconstruct a short value: the
+                # bundled classes are all >= 20 chars, but a contributed catalog
+                # sets its own floor and G4 must not depend on it.
+                last4=(
+                    hit.value[-4:]
+                    if hit.eligible and len(hit.value) >= _MIN_LAST4_VALUE_LEN
+                    else None
+                ),
+                fingerprint=fingerprint,
+                fingerprint_v=FINGERPRINT_VERSION,
+                log_record=hit.log_record,
+            )
+        )
 
     return ExposureScan(
         applicable=surface.applicable,

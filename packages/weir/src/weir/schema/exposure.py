@@ -73,6 +73,7 @@ class ScannedString(msgspec.Struct, frozen=True):
     @property
     def location(self) -> str:
         return format_location(self.path, key=self.key)
+
     # The decoded view (`weir.json_escapes`) of each JSON text `text` holds
     # where it holds an escape (the canary judge's rule, docs/canary.md "The
     # decoded view"): per JSON text, the text unescaped once, twice and so

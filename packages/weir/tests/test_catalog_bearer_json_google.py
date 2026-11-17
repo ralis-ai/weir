@@ -257,17 +257,13 @@ def test_a_json_quoted_value_runs_to_its_closing_quote(form: str) -> None:
     assert _claims(_hits(text)) == [_claim(value, "json_credential_field", eligible=False)]
 
 
-@pytest.mark.parametrize(
-    "value", ["abc\\u00e9123456", "123456\\u00e9abc", "abc\\U0001f600123"]
-)
+@pytest.mark.parametrize("value", ["abc\\u00e9123456", "123456\\u00e9abc", "abc\\U0001f600123"])
 def test_a_token_value_with_escapes_counts_its_literal_letters_and_digits(value: str) -> None:
     # The only digits, or the only letters, come after the escape. When the
     # escape is a valid JSON escape, the decoded reading decides (OPTION B).
     from weir.json_escapes import unescape
 
-    decoded = unescape(value.encode("utf-8", "surrogatepass")).decode(
-        "utf-8", "surrogatepass"
-    )
+    decoded = unescape(value.encode("utf-8", "surrogatepass")).decode("utf-8", "surrogatepass")
     expected = decoded if decoded != value else value
     assert _claims(_hits(f'{{"token": "{value}"}}')) == [
         _claim(expected, "json_credential_field", eligible=False)
@@ -300,11 +296,10 @@ def _encoded(value: str, layers: int) -> str:
 
 _BACKSLASH_VALUE = "abc\\defghijk"
 _BACKSLASH_FORMS = {
-    "env-line": (
-        lambda v: json.dumps({"content": f"DB_PASSWORD={v}\n"}), 1, "credential_field"
-    ),
+    "env-line": (lambda v: json.dumps({"content": f"DB_PASSWORD={v}\n"}), 1, "credential_field"),
     "json-quoted": (
-        lambda v: json.dumps({"content": json.dumps({"password": v})}), 2,
+        lambda v: json.dumps({"content": json.dumps({"password": v})}),
+        2,
         "json_credential_field",
     ),
 }
@@ -555,9 +550,7 @@ _KVLIST_HEADERS = {
         {"accept": {"stringValue": "*/*"}, name: {"stringValue": f"Bearer {t}"}}
     ),
     "array": lambda name, t: _kvlist({name: _HEADER_ATTRIBUTES["array"](t)}),
-    "nested": lambda name, t: _kvlist(
-        {"headers": _kvlist({name: {"stringValue": f"Bearer {t}"}})}
-    ),
+    "nested": lambda name, t: _kvlist({"headers": _kvlist({name: {"stringValue": f"Bearer {t}"}})}),
 }
 
 
@@ -610,9 +603,11 @@ def test_bearer_under_another_kvlist_entry_is_not_a_hit(name: str) -> None:
 def test_a_kvlist_authorization_entry_without_a_real_token_is_not_a_hit(text: str) -> None:
     # The kvlist entry is judged by the same floors and placeholder rules as
     # the plain header attribute.
-    assert _attribute_hits(
-        "http.request.headers", _kvlist({"authorization": {"stringValue": text}})
-    ) == _attribute_hits("http.request.header.authorization", {"stringValue": text}) == []
+    assert (
+        _attribute_hits("http.request.headers", _kvlist({"authorization": {"stringValue": text}}))
+        == _attribute_hits("http.request.header.authorization", {"stringValue": text})
+        == []
+    )
 
 
 _URL_ENCODED_FORMS = {
@@ -729,9 +724,7 @@ def _claims_with_last4(hits: list[ExposureHit]) -> list[tuple[object, ...]]:
 
 @pytest.mark.parametrize("token", sorted(B64_TOKENS))
 @pytest.mark.parametrize("form", sorted(_PCT_TOKEN_FORMS))
-def test_a_percent_encoded_character_inside_a_token_does_not_cut_it(
-    form: str, token: str
-) -> None:
+def test_a_percent_encoded_character_inside_a_token_does_not_cut_it(form: str, token: str) -> None:
     # The hit is the decoded token's claim: the same length, fingerprint and
     # last4 as the plain header holding it, so the two are one credential.
     text = _PCT_TOKEN_FORMS[form](B64_TOKENS[token])
@@ -935,8 +928,8 @@ def test_a_backslash_run_counts_one_character_per_backslash(name: str) -> None:
 @pytest.mark.parametrize(
     ("text", "value"),
     [
-        ('password=abcdefgh' + "\\" * _LONG_RUN + '"', "abcdefgh"),
-        ('password=abcdefgh' + "\\" * _LONG_RUN + "n", "abcdefgh"),
+        ("password=abcdefgh" + "\\" * _LONG_RUN + '"', "abcdefgh"),
+        ("password=abcdefgh" + "\\" * _LONG_RUN + "n", "abcdefgh"),
         ('{"password": "abcdefgh' + "\\" * _LONG_RUN + '"}', "abcdefgh"),
         ("{'password': 'abcdefgh" + "\\" * _LONG_RUN + "t'}", "abcdefgh"),
     ],

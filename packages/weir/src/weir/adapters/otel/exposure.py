@@ -62,17 +62,28 @@ _AUTHORIZATION_HEADERS = frozenset({"authorization", "proxy-authorization"})
 # reads the snake_case spellings protojson writes with proto field names and
 # decodes bytes. Any other shape is counted as not scanned.
 _SPAN_WRAPPERS = (
-    ("stringValue", "string"), ("arrayValue", "array"), ("kvlistValue", "kvlist"),
-    ("intValue", "scalar"), ("doubleValue", "scalar"), ("boolValue", "scalar"),
+    ("stringValue", "string"),
+    ("arrayValue", "array"),
+    ("kvlistValue", "kvlist"),
+    ("intValue", "scalar"),
+    ("doubleValue", "scalar"),
+    ("boolValue", "scalar"),
 )
 _LOG_WRAPPERS = (
-    ("stringValue", "string"), ("string_value", "string"),
-    ("bytesValue", "bytes"), ("bytes_value", "bytes"),
-    ("arrayValue", "array"), ("array_value", "array"),
-    ("kvlistValue", "kvlist"), ("kvlist_value", "kvlist"),
-    ("intValue", "scalar"), ("int_value", "scalar"),
-    ("doubleValue", "scalar"), ("double_value", "scalar"),
-    ("boolValue", "scalar"), ("bool_value", "scalar"),
+    ("stringValue", "string"),
+    ("string_value", "string"),
+    ("bytesValue", "bytes"),
+    ("bytes_value", "bytes"),
+    ("arrayValue", "array"),
+    ("array_value", "array"),
+    ("kvlistValue", "kvlist"),
+    ("kvlist_value", "kvlist"),
+    ("intValue", "scalar"),
+    ("int_value", "scalar"),
+    ("doubleValue", "scalar"),
+    ("double_value", "scalar"),
+    ("boolValue", "scalar"),
+    ("bool_value", "scalar"),
 )
 
 # The members OTLP defines at each level, as camelCase OTLP/JSON names
@@ -88,20 +99,53 @@ _OTLP_FIELDS = {
     "scopeSpans": frozenset({"scope", "spans", "schemaUrl"}),
     "scopeLogs": frozenset({"scope", "logRecords", "schemaUrl"}),
     "scope": frozenset({"name", "version", "attributes", "droppedAttributesCount"}),
-    "span": frozenset({
-        "traceId", "spanId", "traceState", "parentSpanId", "flags", "name", "kind",
-        "startTimeUnixNano", "endTimeUnixNano", "attributes", "droppedAttributesCount",
-        "events", "droppedEventsCount", "links", "droppedLinksCount", "status",
-    }),
+    "span": frozenset(
+        {
+            "traceId",
+            "spanId",
+            "traceState",
+            "parentSpanId",
+            "flags",
+            "name",
+            "kind",
+            "startTimeUnixNano",
+            "endTimeUnixNano",
+            "attributes",
+            "droppedAttributesCount",
+            "events",
+            "droppedEventsCount",
+            "links",
+            "droppedLinksCount",
+            "status",
+        }
+    ),
     "event": frozenset({"timeUnixNano", "name", "attributes", "droppedAttributesCount"}),
-    "link": frozenset({
-        "traceId", "spanId", "traceState", "attributes", "droppedAttributesCount", "flags",
-    }),
+    "link": frozenset(
+        {
+            "traceId",
+            "spanId",
+            "traceState",
+            "attributes",
+            "droppedAttributesCount",
+            "flags",
+        }
+    ),
     "status": frozenset({"message", "code"}),
-    "logRecord": frozenset({
-        "timeUnixNano", "observedTimeUnixNano", "severityNumber", "severityText", "body",
-        "attributes", "droppedAttributesCount", "flags", "traceId", "spanId", "eventName",
-    }),
+    "logRecord": frozenset(
+        {
+            "timeUnixNano",
+            "observedTimeUnixNano",
+            "severityNumber",
+            "severityText",
+            "body",
+            "attributes",
+            "droppedAttributesCount",
+            "flags",
+            "traceId",
+            "spanId",
+            "eventName",
+        }
+    ),
     "keyValue": frozenset({"key", "value"}),
     "values": frozenset({"values"}),
 }
@@ -119,7 +163,9 @@ class _Found(NamedTuple):
 
 
 def _undefined(
-    fields: dict[str, object], defined: frozenset[str], path: tuple[Segment, ...],
+    fields: dict[str, object],
+    defined: frozenset[str],
+    path: tuple[Segment, ...],
     out: list[_Found],
 ) -> None:
     """Each member of `fields` outside `defined` holding data (anything but
@@ -298,7 +344,7 @@ def _header_name(key: str, *, in_kvlist: bool) -> str | None:
     """The authorization header an attribute key names, as written, or None.
     `http.request.header.<name>` names `<name>` anywhere; a bare `<name>`
     names it only as a kvlist entry, where a header map keeps its names."""
-    name = key[len(_REQUEST_HEADER):] if key.lower().startswith(_REQUEST_HEADER) else None
+    name = key[len(_REQUEST_HEADER) :] if key.lower().startswith(_REQUEST_HEADER) else None
     if name is None and in_kvlist:
         name = key
     if name is None or name.lower().replace("_", "-") not in _AUTHORIZATION_HEADERS:
@@ -488,9 +534,7 @@ def scan_surface(wire: WireInput) -> ExposureSurface:
         return out
 
     for span_index, ctx in enumerate(wire.spans):
-        found = readable(
-            _span_surface(ctx) + _context_surface(ctx, seen)
-        )
+        found = readable(_span_surface(ctx) + _context_surface(ctx, seen))
         span_ref = ctx.span.span_id.strip().lower()
         strings.extend(
             ScannedString(
@@ -507,9 +551,7 @@ def scan_surface(wire: WireInput) -> ExposureSurface:
             for f, text, decoded, dmasks in found
         )
     for log_index, ctx in enumerate(wire.log_records):
-        found = readable(
-            _log_surface(ctx) + _context_surface(ctx, seen, log=True)
-        )
+        found = readable(_log_surface(ctx) + _context_surface(ctx, seen, log=True))
         strings.extend(
             ScannedString(
                 record_index=len(wire.spans) + log_index,

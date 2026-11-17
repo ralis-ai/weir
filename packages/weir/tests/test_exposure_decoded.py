@@ -77,7 +77,9 @@ def _attr(key: str, value: object) -> dict[str, object]:
 
 def _spans(*attributes: dict[str, object], events: list[object] | None = None) -> str:
     span: dict[str, object] = {
-        "traceId": "11" * 16, "spanId": "aa" * 8, "name": "execute_tool get_weather",
+        "traceId": "11" * 16,
+        "spanId": "aa" * 8,
+        "name": "execute_tool get_weather",
         "attributes": [
             _attr("gen_ai.operation.name", "execute_tool"),
             _attr("gen_ai.tool.name", "get_weather"),
@@ -175,8 +177,13 @@ def test_any_letters_of_any_key_may_be_escaped(
     key = _KEYS[kind]
     plain = _scan(_spans(_attr("gen_ai.tool.call.arguments", _fill(document, key))))
     assert [h.eligible for h in plain.hits] == [True], plain.hits
-    escaped = _scan(_spans(_attr("gen_ai.tool.call.arguments", _fill(document, _escaped(
-        key, pattern, upper=upper)))))
+    escaped = _scan(
+        _spans(
+            _attr(
+                "gen_ai.tool.call.arguments", _fill(document, _escaped(key, pattern, upper=upper))
+            )
+        )
+    )
     assert escaped == plain
 
 
@@ -233,8 +240,12 @@ def test_letters_escaped_in_a_token_value_read_as_those_letters(wrap: str) -> No
 )
 def test_a_key_found_as_written_and_decoded_is_one_finding(document: str) -> None:
     def written(escaped: str) -> str:
-        return _spans(_attr("gen_ai.tool.call.arguments",
-                            document.replace("{plain}", _KEY).replace("{escaped}", escaped)))
+        return _spans(
+            _attr(
+                "gen_ai.tool.call.arguments",
+                document.replace("{plain}", _KEY).replace("{escaped}", escaped),
+            )
+        )
 
     plain = _cli(written(_KEY))
     escaped = _cli(written(_escaped(_KEY, "middle")))
@@ -256,8 +267,12 @@ def test_a_longer_key_that_contains_another_is_not_the_same_finding(document: st
     view too, leaves both standing."""
 
     def written(escape: str) -> str:
-        return _spans(_attr("gen_ai.tool.call.arguments",
-                            document.replace("{key}", _KEY).replace("{escape}", escape)))
+        return _spans(
+            _attr(
+                "gen_ai.tool.call.arguments",
+                document.replace("{key}", _KEY).replace("{escape}", escape),
+            )
+        )
 
     plain = _scan(written(""))
     assert len({h.fingerprint for h in plain.hits if h.eligible}) == 2, plain.hits
@@ -277,8 +292,7 @@ def test_a_key_inside_a_key_of_another_class_stands_beside_an_escape(value: str)
     view; an escape elsewhere must leave both keys standing."""
 
     def written(escape: str) -> str:
-        return _spans(_attr("gen_ai.tool.call.arguments",
-                            '{"a": "' + value + '"' + escape + "}"))
+        return _spans(_attr("gen_ai.tool.call.arguments", '{"a": "' + value + '"' + escape + "}"))
 
     plain = _scan(written(""))
     assert len({h.source_class for h in plain.hits if h.eligible}) == 2, plain.hits
@@ -347,8 +361,9 @@ def test_many_keys_beside_escapes_cost_about_what_they_cost_without_them(
 
 def test_the_view_counts_no_extra_string() -> None:
     plain = _scan(_spans(_attr("gen_ai.tool.call.arguments", '{"note": "' + _KEY + '"}')))
-    escaped = _scan(_spans(_attr("gen_ai.tool.call.arguments",
-                                 '{"note": "' + _escaped(_KEY) + '"}')))
+    escaped = _scan(
+        _spans(_attr("gen_ai.tool.call.arguments", '{"note": "' + _escaped(_KEY) + '"}'))
+    )
     assert escaped.strings_scanned == plain.strings_scanned
     assert escaped.values_not_scanned == plain.values_not_scanned == 0
 
@@ -386,8 +401,9 @@ def test_the_scan_picks_the_json_text_the_judge_picks(text: str) -> None:
     """One rule for both detectors: the same JSON texts of one string."""
     filled = _fill(text, _escaped(_KEY))
     data = filled.encode("utf-8", errors="surrogatepass")
-    assert _json_texts(filled) == [s.decode("utf-8", errors="surrogateescape")
-                                   for s in _json_spans(data)]
+    assert _json_texts(filled) == [
+        s.decode("utf-8", errors="surrogateescape") for s in _json_spans(data)
+    ]
 
 
 # --- the bound --------------------------------------------------------------
