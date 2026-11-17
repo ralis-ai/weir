@@ -62,6 +62,19 @@
   project files. The value of a URL credential is still the whole URL
   ([docs/inventory.md](docs/inventory.md)).
 
+### Fixed
+- **`weir scan` accepts a metrics-only export and reports it incomplete**
+  (`weir-scan`). An OTLP export whose only signal is metrics (a
+  `resourceMetrics` list, empty or not, with no `resourceSpans` or
+  `resourceLogs`) was rejected as unusable input, exit 2, both with the
+  default `--input-format auto` and with `--input-format otlp`. It is now
+  read as OTLP: `weir scan` prints `data in 1 batch not scanned` and exits
+  3, incomplete, as it already did for metrics beside spans. `weir gauge`
+  accepts it as it does a logs-only export: it exits 0, says no flow trace
+  was built and prints the same not-scanned line. JSON with none of the
+  three lists still exits 2, and its message now names all three
+  ([docs/scan.md](docs/scan.md#limits)).
+
 ## [0.10.0] - 2026-11-12
 
 **Behaviour change:** `weir scan` now exits 3, incomplete, when an export

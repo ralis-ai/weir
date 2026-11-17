@@ -384,3 +384,47 @@ def test_every_field_otlp_defines_still_exits_0(
     code, stdout, html, _ = _cli(body)
     assert code == 0, stdout
     assert 'class="green-screen"' in html
+
+
+# kind -> an export whose only signal is metrics. Its control is the same
+# batches beside an empty resourceLogs batch, which weir reads (as nothing):
+# every line either command prints must be the same for both.
+_METRICS_ONLY: dict[str, str] = {
+    "a metrics-only export": json.dumps(_METRICS),
+    "an empty resourceMetrics list": json.dumps({"resourceMetrics": []}),
+    "metrics-only JSON Lines": _lines(_METRICS, _METRICS),
+}
+
+
+def _run(command: str, body: str, input_format: str) -> tuple[int, list[str]]:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("export.json").write_text(body, encoding="utf-8")
+        result = runner.invoke(main, [command, "export.json", "--input-format", input_format])
+    assert result.exception is None or isinstance(result.exception, SystemExit), result.output
+    return result.exit_code, result.output.splitlines()
+
+
+@pytest.mark.parametrize("input_format", ["auto", "otlp"])
+@pytest.mark.parametrize("kind", sorted(_METRICS_ONLY))
+def test_a_metrics_only_export_is_read_as_otlp_and_exits_3(kind: str, input_format: str) -> None:
+    body = _METRICS_ONLY[kind]
+    control = _lines({"resourceLogs": []}, *map(json.loads, body.splitlines()))
+    assert _unread(body) == _unread(control) == len(body.splitlines())
+    code, stdout = _run("scan", body, input_format)
+    assert (code, stdout) == _run("scan", control, input_format)
+    assert code == 3
+    assert stdout[-1] == _INCOMPLETE
+    gauge, gauge_stdout = _run("gauge", body, input_format)
+    assert (gauge, gauge_stdout) == _run("gauge", control, input_format)
+    assert gauge == 0
+    not_scanned = [ln for ln in stdout if "not scanned" in ln]
+    assert len(not_scanned) == 1
+    assert not_scanned == [ln for ln in gauge_stdout if "not scanned" in ln]
+
+
+@pytest.mark.parametrize("input_format", ["auto", "otlp"])
+@pytest.mark.parametrize("command", ["scan", "gauge"])
+def test_json_with_no_otlp_signal_is_still_unusable_input(command: str, input_format: str) -> None:
+    code, _ = _run(command, json.dumps({"note": "export done"}), input_format)
+    assert code == 2

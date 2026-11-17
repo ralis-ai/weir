@@ -96,8 +96,9 @@ from weir.taint import build_tainted_graph
 
 _BOM = b"\xef\xbb\xbf"
 
-# What a logs-only gauge still owes the reader: input the decoder could not
-# read at all. The flow-side remediations describe a trace that does not exist.
+# What a gauge with no spans (a logs-only or metrics-only export) still owes
+# the reader: input the decoder could not read at all. The flow-side
+# remediations describe a trace that does not exist.
 _INPUT_REMEDIATIONS = frozenset(
     REMEDIATION[reason]
     for reason in (DegradationReason.INVALID_ENCODING, DegradationReason.UNDECODABLE_BATCH)
@@ -147,7 +148,14 @@ def _looks_like_otlp(data: bytes) -> bool:
     if isinstance(parsed, dict):
         return any(
             key in parsed
-            for key in ("resourceSpans", "resource_spans", "resourceLogs", "resource_logs")
+            for key in (
+                "resourceSpans",
+                "resource_spans",
+                "resourceLogs",
+                "resource_logs",
+                "resourceMetrics",
+                "resource_metrics",
+            )
         )
     return False
 
@@ -208,7 +216,7 @@ def _load_input_or_exit(
     type=click.Choice(["auto", "native", "otlp"]),
     default="auto",
     show_default=True,
-    help="Input format; auto sniffs for a resourceSpans or resourceLogs key.",
+    help="Input format; auto sniffs for a resourceSpans, resourceLogs or resourceMetrics key.",
 )
 def gauge_command(
     trace_path: str | None,
@@ -240,8 +248,8 @@ def gauge_command(
     if as_json:
         click.echo(msgspec.json.encode(report).decode())
     elif not has_traces:
-        # A logs-only export: coverage, the ladder and provenance would all
-        # describe a trace that does not exist.
+        # A logs-only or metrics-only export: coverage, the ladder and
+        # provenance would all describe a trace that does not exist.
         click.echo("flow scan: the input held no spans, so no flow trace was built")
         for line in remediations:
             if line in _INPUT_REMEDIATIONS:
@@ -301,7 +309,7 @@ def gauge_command(
     type=click.Choice(["auto", "native", "otlp"]),
     default="auto",
     show_default=True,
-    help="Input format; auto sniffs for a resourceSpans or resourceLogs key.",
+    help="Input format; auto sniffs for a resourceSpans, resourceLogs or resourceMetrics key.",
 )
 def scan_command(
     trace_path: str,

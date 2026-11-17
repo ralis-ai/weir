@@ -141,3 +141,6 @@ Any that can export OpenTelemetry spans to a file.
   `incomplete: the export holds data the scan did not read (see above)`,
   and the HTML report shows an incomplete notice in place of the green
   page. `weir gauge` prints the same not-scanned lines and still exits 0.
+  An export that holds only metrics is read the same way: it is OTLP input,
+  not unusable input, so `weir scan` exits 3 and `weir gauge` says no flow
+  trace was built and prints the not-scanned line.

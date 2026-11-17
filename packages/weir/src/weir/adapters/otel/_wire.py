@@ -34,6 +34,7 @@ _KEY_ALIASES = {
     "scope_spans": "scopeSpans",
     "resource_logs": "resourceLogs",
     "scope_logs": "scopeLogs",
+    "resource_metrics": "resourceMetrics",
     "log_records": "logRecords",
     "schema_url": "schemaUrl",
     "trace_id": "traceId",
@@ -127,8 +128,9 @@ class WireInput(msgspec.Struct, frozen=True):
     # Resources, scopes, spans, log records and lists whose shape could not
     # be read: counted toward the same not-scanned report.
     values_not_scanned: int = 0
-    # False when no batch holds a resourceSpans list (a logs-only export):
-    # there is no flow trace to measure, only the exposure scan.
+    # False when no batch holds a resourceSpans list (a logs-only or
+    # metrics-only export): there is no flow trace to measure, only the
+    # exposure scan.
     has_traces: bool = True
 
 
@@ -286,6 +288,10 @@ def decode_input(data: bytes) -> WireInput:
         normalized = cast("dict[str, object]", _normalize_keys(batch))
         resource_spans = normalized.get("resourceSpans")
         resource_logs = normalized.get("resourceLogs")
+        if isinstance(normalized.get("resourceMetrics"), list):
+            # Metrics are not read, but they make the input OTLP: the batch
+            # is counted as not scanned below, so the scan is incomplete.
+            saw_otlp_shape = True
         if not isinstance(resource_spans, list):
             # Decoded fine but not a traces payload (logs/metrics in a
             # mixed export): counted, never silently skipped.
@@ -361,8 +367,8 @@ def decode_input(data: bytes) -> WireInput:
 
     if not saw_otlp_shape:
         raise OtlpRejectError(
-            "input is JSON but not OTLP-shaped: no resourceSpans or resourceLogs "
-            "list found in any document or line"
+            "input is JSON but not OTLP-shaped: no resourceSpans, resourceLogs or "
+            "resourceMetrics list found in any document or line"
         )
     if non_trace_batches:
         degradations.append(

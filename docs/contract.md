@@ -1,6 +1,6 @@
 # The reject-vs-degrade contract
 
-Exit-2 rejects are exactly two conditions: the input is not JSON at all (neither a JSON document nor JSON Lines), or the input is JSON but not OTLP-shaped (no `resourceSpans` or `resourceLogs` list found anywhere). Everything else degrades, named by one of the rows below.
+Exit-2 rejects are exactly two conditions: the input is not JSON at all (neither a JSON document nor JSON Lines), or the input is JSON but not OTLP-shaped (no `resourceSpans`, `resourceLogs` or `resourceMetrics` list found anywhere). Everything else degrades, named by one of the rows below.
 
 | reason | trigger | what weir does | remediation |
 | --- | --- | --- | --- |
