@@ -56,18 +56,24 @@ _MAX_DEPTH = 64
 _REQUEST_HEADER = "http.request.header."
 _AUTHORIZATION_HEADERS = frozenset({"authorization", "proxy-authorization"})
 
-# AnyValue members, in the order they are tried. A span reads the three
-# camelCase string carriers only, exactly as it always has, and passes
-# camelCase numbers and booleans as holding no string. A log record also
-# reads the snake_case spellings protojson writes with proto field names and
-# decodes bytes. Any other shape is counted as not scanned.
+# AnyValue members, in the order they are tried. Both spans and log records
+# read the camelCase and snake_case spellings of the string, array and kvlist
+# carriers, and pass numbers and booleans in either spelling as holding no
+# string. A log record also decodes bytes. Any other shape is counted as not
+# scanned.
 _SPAN_WRAPPERS = (
     ("stringValue", "string"),
+    ("string_value", "string"),
     ("arrayValue", "array"),
+    ("array_value", "array"),
     ("kvlistValue", "kvlist"),
+    ("kvlist_value", "kvlist"),
     ("intValue", "scalar"),
+    ("int_value", "scalar"),
     ("doubleValue", "scalar"),
+    ("double_value", "scalar"),
     ("boolValue", "scalar"),
+    ("bool_value", "scalar"),
 )
 _LOG_WRAPPERS = (
     ("stringValue", "string"),

@@ -59,9 +59,6 @@ _FINE = _attr("acme.tool", "fine")
 # kind -> (a span holding data the scan does not read, the same span without
 # it), with the resources listed before the span's own.
 _SPAN_SHAPES: dict[str, tuple[dict[str, object], dict[str, object], tuple[object, ...]]] = {
-    "a span value in a snake_case wrapper": (
-        {"attributes": [{"key": "acme.tool", "value": {"string_value": "fine"}}]},
-        {"attributes": [_FINE]}, ()),
     "a span value in bytesValue": (
         {"attributes": [{"key": "acme.tool",
                          "value": {"bytesValue": base64.b64encode(b"fine").decode()}}]},

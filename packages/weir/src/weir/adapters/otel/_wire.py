@@ -26,9 +26,9 @@ _BOM = b"\xef\xbb\xbf"
 
 # snake_case -> camelCase for the multi-word structural keys OTLP defines
 # (the exposure scan counts any other member as not scanned). Attribute
-# entry keys ("key"/"value") are identical in both variants; the AnyValue
-# wrappers inside a value ("stringValue"/"string_value") are not renamed
-# here, the exposure walk reads both spellings.
+# entry keys ("key", "value") are single-word names with no variant to
+# rename; the AnyValue wrappers inside a value ("stringValue"/"string_value")
+# are not renamed here, the exposure walk reads both spellings.
 _KEY_ALIASES = {
     "resource_spans": "resourceSpans",
     "scope_spans": "scopeSpans",

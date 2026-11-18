@@ -63,6 +63,18 @@
   ([docs/inventory.md](docs/inventory.md)).
 
 ### Fixed
+- **`weir scan` reads span attributes in both camelCase and snake_case
+  value wrappers** (`weir-scan`). An OTLP/JSON export written with the
+  original protobuf field names (`string_value`, `array_value`,
+  `kvlist_value` and the number and boolean carriers) is now read in span
+  attributes the same as in log records. Previously only the camelCase
+  spellings were read in spans, so a span attribute such as
+  `{"string_value": "..."}` was counted as not scanned.
+- **Duplicate-match pruning scales with input size** (`weir-scan`). The
+  step that marks a match as covered by a longer match in the same string
+  now sorts by start position and searches the sorted list, keeping the
+  same result while running close to linearly instead of comparing every
+  match with every other.
 - **`weir canary judge` withholds a planted key's slice whatever its case**
   (`weir-scan`). The printing rule for capture-derived text compared
   6-character runs case-sensitively, so a flow that lowercased part of its
