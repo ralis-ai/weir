@@ -1,6 +1,6 @@
 {"schema": "canary-ledger/1"}
-{"type": "placement", "id": "env.SAMPLE_SERVICE_KEY", "kind": "env", "value": "NotARealKeyCanarySample7Q2w5Z8v", "required": true}
-{"type": "placement", "id": "code.sample_client.token", "kind": "code", "value": "NotARealKeyCanaryClient4J6m9P1x"}
+{"type": "placement", "id": "env.SAMPLE_SERVICE_KEY", "kind": "env", "value": "NotARealKey3xJ7qR9mW2vZ8pN4bY", "required": true}
+{"type": "placement", "id": "code.sample_client.token", "kind": "code", "value": "NotARealKey5tK8nP6gH1cX3fL9wQ"}
 {"type": "exercised", "placement": "env.SAMPLE_SERVICE_KEY", "evidence": "request"}
 {"type": "exercised", "placement": "code.sample_client.token", "evidence": "request"}
 {"type": "flow", "id": "sample", "status": "ok"}

@@ -99,6 +99,7 @@ def ledger_display(ledger: Ledger) -> Display:
         (n.data for n in _all_needles(ledger)),
         (p.value for p in ledger.placements),
         decoded=True,
+        casefold=True,
     )
 
 

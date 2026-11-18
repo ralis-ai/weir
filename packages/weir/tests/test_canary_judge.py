@@ -500,6 +500,19 @@ def test_capture_text_is_flattened_and_cut_to_200_characters(tmp_path: Path) -> 
     assert all(len(typing.cast(str, n)) <= 200 for n in names)
 
 
+def test_a_lowercased_slice_of_a_value_in_a_span_name_is_withheld(tmp_path: Path) -> None:
+    """The printing rule compares runs without regard to letter case
+    (docs/canary.md, "Printing capture-derived text")."""
+    ledger, otlp = _clean_setup(tmp_path)
+    name = f"tool.{_A[:8].lower()}.call"
+    fx.write(otlp, fx.traces(fx.span(name, attributes=[fx.kv("k", _A)])) + "\n")
+    run = fx.judge(ledger, [otlp])
+    assert fx.leak_lines(run) == [
+        f'LEAK env.A file={otlp}:1 signal=traces span="[withheld]" at=attributes.k form=raw',
+    ]
+    fx.assert_value_free(run.stdout, [_A])
+
+
 # --- purity, schema, value-free ---------------------------------------------------
 
 

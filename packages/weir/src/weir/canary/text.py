@@ -6,7 +6,8 @@ hold a canary. Before any
 such string is printed it is flattened to one line, cut to 200 characters,
 and replaced entirely by `[withheld]` if it, or any text of its decoded
 view, holds any needle or any run of 6 consecutive characters of any ledger
-value, or if it is escaped past the view's bound (docs/canary.md, "Printing
+value (compared without regard to letter case when `casefold` is set), or
+if it is escaped past the view's bound (docs/canary.md, "Printing
 capture-derived text").
 """
 
@@ -35,12 +36,20 @@ class Display:
     JSON or not."""
 
     def __init__(
-        self, needles: Iterable[bytes], values: Iterable[str], *, decoded: bool = False
+        self,
+        needles: Iterable[bytes],
+        values: Iterable[str],
+        *,
+        decoded: bool = False,
+        casefold: bool = False,
     ) -> None:
         self._decoded = decoded
+        self._casefold = casefold
         self._needles = tuple(needles)
         self._runs = frozenset(
-            value[i : i + RUN] for value in values for i in range(len(value) - RUN + 1)
+            (value[i : i + RUN].lower() if casefold else value[i : i + RUN])
+            for value in values
+            for i in range(len(value) - RUN + 1)
         )
 
     def holds_value(self, text: str) -> bool:
@@ -60,7 +69,8 @@ class Display:
     def _holds(self, data: bytes, text: str) -> bool:
         if any(needle in data for needle in self._needles):
             return True
-        return any(text[i : i + RUN] in self._runs for i in range(len(text) - RUN + 1))
+        compared = text.lower() if self._casefold else text
+        return any(compared[i : i + RUN] in self._runs for i in range(len(compared) - RUN + 1))
 
     def __call__(self, text: str) -> str:
         if self.holds_value(text):

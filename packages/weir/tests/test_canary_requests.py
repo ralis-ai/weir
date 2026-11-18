@@ -310,6 +310,65 @@ def test_a_blocked_host_holding_a_value_is_withheld_in_the_sink(tmp_path: Path) 
     ]
 
 
+# --- case-insensitive withholding in blocked-request hosts -------------------
+
+
+def test_a_lowercased_slice_of_a_value_in_a_blocked_host_is_withheld(tmp_path: Path) -> None:
+    """A flow that lowercases part of its fake key into a host name must not
+    print the lowercased slice (docs/canary.md, "Printing capture-derived
+    text": the run comparison ignores letter case)."""
+    value = fx.fake_value("casefold-lower")
+    host = f"{value[:10].lower()}.exfil.invalid"
+    record = fx.request("refused", None, host=host, port=80)
+    run = _run(tmp_path, [record], [fx.placement(SINK_PLACEMENT, value)])
+    assert typing.cast(list[dict[str, object]], run.report["blocked"]) == [
+        {"kind": "request", "host": "[withheld]", "port": 80, "count": 1}
+    ]
+
+
+def test_an_uppercased_slice_of_a_value_in_a_blocked_host_is_withheld(tmp_path: Path) -> None:
+    value = fx.fake_value("casefold-upper")
+    host = f"{value[:10].upper()}.exfil.invalid"
+    record = fx.request("refused", None, host=host, port=80)
+    run = _run(tmp_path, [record], [fx.placement(SINK_PLACEMENT, value)])
+    assert typing.cast(list[dict[str, object]], run.report["blocked"]) == [
+        {"kind": "request", "host": "[withheld]", "port": 80, "count": 1}
+    ]
+
+
+def test_a_mixed_case_slice_of_a_value_in_a_blocked_host_is_withheld(tmp_path: Path) -> None:
+    value = fx.fake_value("casefold-mixed")
+    mixed = "".join(ch.upper() if i % 2 else ch.lower() for i, ch in enumerate(value[:10]))
+    host = f"{mixed}.exfil.invalid"
+    record = fx.request("connect", None, host=host, port=443)
+    run = _run(tmp_path, [record], [fx.placement(SINK_PLACEMENT, value)])
+    assert typing.cast(list[dict[str, object]], run.report["blocked"]) == [
+        {"kind": "connection", "host": "[withheld]", "port": 443, "count": 1}
+    ]
+
+
+def test_a_short_slice_below_the_run_threshold_is_printed_unchanged(tmp_path: Path) -> None:
+    """A slice shorter than 6 characters is below the run threshold and
+    printed as-is, even when it matches a prefix of a value."""
+    value = fx.fake_value("casefold-short")
+    host = f"{value[:5].lower()}.safe.invalid"
+    record = fx.request("refused", None, host=host, port=80)
+    run = _run(tmp_path, [record], [fx.placement(SINK_PLACEMENT, value)])
+    blocked = typing.cast(list[dict[str, object]], run.report["blocked"])
+    assert blocked[0]["host"] == f"{value[:5].lower()}.safe.invalid"
+
+
+def test_non_ascii_host_text_is_withheld_consistently_with_lower(tmp_path: Path) -> None:
+    """Non-ASCII characters fold with str.lower, consistent with weir-run."""
+    value = fx.fake_value("casefold-nonascii")
+    host = f"{value[:8].lower()}.example.invalid"
+    record = fx.request("refused", None, host=host, port=80)
+    run = _run(tmp_path, [record], [fx.placement(SINK_PLACEMENT, value)])
+    assert typing.cast(list[dict[str, object]], run.report["blocked"]) == [
+        {"kind": "request", "host": "[withheld]", "port": 80, "count": 1}
+    ]
+
+
 # --- blocked connection attempts --------------------------------------------
 
 

@@ -91,11 +91,9 @@ def test_sample_reports_the_one_leak_by_placement_span_and_location() -> None:
     run = _run()
     assert run.exit_code == 1
     (leak,) = fx.leak_lines(run)
-    prefix, _, path = leak.partition(" file=")
-    assert prefix == f"LEAK {want.placement}"
-    assert path.split(":", 1)[0].endswith(want.otlp_name)
-    assert f":{want.line} signal=traces span={json.dumps(want.span)} " in leak
-    assert leak.endswith(f" at={want.location} form=raw")
+    assert leak.startswith(f"LEAK {want.placement} file=canary-sample/{want.otlp_name}")
+    assert f":{want.line} signal=traces span={json.dumps(want.span)} at={want.location} " in leak
+    assert leak.endswith(" form=raw")
     assert run.lines[-1] == "result: leak"
 
 
@@ -106,18 +104,28 @@ def test_sample_json_report_names_the_same_hit() -> None:
     report = run.report
     assert report["result"] == "leak" and report["exit_code"] == 1
     (hit,) = report["hits"]
-    assert (hit["placement"], hit["span"], hit["location"], hit["line"]) == (
-        want.placement,
-        want.span,
-        want.location,
-        want.line,
-    )
+    assert hit["placement"] == want.placement
+    assert hit["span"] == want.span
+    assert hit["line"] == want.line
+    assert hit["location"] == want.location
 
 
 @pytest.mark.parametrize("extra", [(), ("--json",)])
 def test_sample_never_prints_a_planted_value_or_a_fragment(extra: tuple[str, ...]) -> None:
     run = _run(*extra)
     fx.assert_value_free(run.stdout + run.stderr, _values().values())
+
+
+def test_sample_does_not_withhold_its_own_file_and_attribute_names() -> None:
+    """The sample's fake values must not share a case-insensitive 6-character
+    run with the sample's own file names or attribute keys, so the report
+    prints them in the clear."""
+    (want,) = _expected_leaks()
+    run = _run()
+    (leak,) = fx.leak_lines(run)
+    assert f"file=canary-sample/{want.otlp_name}:" in leak
+    assert f"at={want.location} " in leak
+    assert "[withheld]" not in leak
 
 
 @pytest.mark.parametrize(

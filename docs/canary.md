@@ -81,7 +81,7 @@ the placement and the span, never the value:
 <!-- verify: canary judge --sample -->
 ```text
 LEAK env.SAMPLE_SERVICE_KEY file=canary-sample/otlp.jsonl:1 signal=traces span="call_service" at=attributes.app.client.config form=raw
-coverage: 2 placements (1 leaked, 1 exercised, 0 not exercised, 1 required), 1 flows (1 ok), 1 files, 3 spans, 0 log records, 0 metric data points, 29 strings, 1347 bytes swept
+coverage: 2 placements (1 leaked, 1 exercised, 0 not exercised, 1 required), 1 flows (1 ok), 1 files, 3 spans, 0 log records, 0 metric data points, 29 strings, 1345 bytes swept
 network not isolated: direct connections were not observed
 result: leak
 ```
@@ -604,8 +604,8 @@ one line (control characters shown as `\xNN`), cut to 200 characters with
 `...`, and replaced entirely by `[withheld]` if it, or the string
 unescaped as [the decoded view](#the-decoded-view) unescapes (any string,
 JSON or not), contains any needle or any run of 6 or more consecutive
-characters of any ledger value, or if it is escaped deeper than the view
-reads. A canary in a
+characters of any ledger value (compared without regard to letter case),
+or if it is escaped deeper than the view reads. A canary in a
 span name is therefore reported as a hit at location `name` of a span
 shown as `[withheld]`.
 

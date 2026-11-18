@@ -12,7 +12,7 @@
 <text class="r r1" x="22" y="71" fill="#ff7b72" xml:space="preserve">LEAK env.SAMPLE_SERVICE_KEY file=canary-sample/otlp.jsonl:1 signal=traces</text>
 <text class="r r2" x="22" y="92" fill="#ff7b72" xml:space="preserve">  span="call_service" at=attributes.app.client.config form=raw</text>
 <text class="r r3" x="22" y="113" fill="#8b949e" xml:space="preserve">coverage: 2 placements (1 leaked, 1 exercised, 0 not exercised, 1 required), 1 flows (1 ok),</text>
-<text class="r r4" x="22" y="134" fill="#8b949e" xml:space="preserve">  1 files, 3 spans, 0 log records, 0 metric data points, 29 strings, 1347 bytes swept</text>
+<text class="r r4" x="22" y="134" fill="#8b949e" xml:space="preserve">  1 files, 3 spans, 0 log records, 0 metric data points, 29 strings, 1345 bytes swept</text>
 <text class="r r5" x="22" y="155" fill="#8b949e" xml:space="preserve">network not isolated: direct connections were not observed</text>
 <text class="r r6" x="22" y="176" fill="#ff7b72" xml:space="preserve">result: leak</text>
 <text class="r r7 c" x="22" y="197">$</text>

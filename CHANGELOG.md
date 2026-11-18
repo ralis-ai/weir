@@ -63,6 +63,12 @@
   ([docs/inventory.md](docs/inventory.md)).
 
 ### Fixed
+- **`weir canary judge` withholds a planted key's slice whatever its case**
+  (`weir-scan`). The printing rule for capture-derived text compared
+  6-character runs case-sensitively, so a flow that lowercased part of its
+  fake key (for example into a host name) could print that lowercased slice.
+  The comparison now ignores letter case, consistent with weir-run's own
+  withholding for refused egress hosts.
 - **`weir scan` accepts a metrics-only export and reports it incomplete**
   (`weir-scan`). An OTLP export whose only signal is metrics (a
   `resourceMetrics` list, empty or not, with no `resourceSpans` or
