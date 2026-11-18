@@ -215,48 +215,85 @@ def _only_hit(run: fx.Run, setup: fx.Setup, name: str = fx.ACME) -> dict[str, ob
     ("record", "kind", "location"),
     [
         (
-            {"type": "attachment", "attachment": {"type": "file", "filename": "x.env"},
-             "rendered": [{"content": "<file>{v}</file>"}]},
-            "context", "rendered[0].content",
+            {
+                "type": "attachment",
+                "attachment": {"type": "file", "filename": "x.env"},
+                "rendered": [{"content": "<file>{v}</file>"}],
+            },
+            "context",
+            "rendered[0].content",
         ),
         (
-            {"type": "attachment", "attachment": {"type": "file", "content": "{v}"},
-             "rendered": [{"content": "elided"}]},
-            "stored", "attachment.content",
+            {
+                "type": "attachment",
+                "attachment": {"type": "file", "content": "{v}"},
+                "rendered": [{"content": "elided"}],
+            },
+            "stored",
+            "attachment.content",
         ),
         (
             {"type": "attachment", "attachment": {"type": "session_context", "context": "{v}"}},
-            "unknown", "attachment.context",
+            "unknown",
+            "attachment.context",
         ),
         ({"type": "summary", "summary": "the token is {v}"}, "context", "summary"),
         ({"type": "summary", "leafUuid": "{v}"}, "stored", "leafUuid"),
         ({"type": "last-prompt", "lastPrompt": "use {v}"}, "stored", "lastPrompt"),
         ({"type": "queue-operation", "content": "use {v}"}, "stored", "content"),
         (
-            {"type": "user", "message": {"role": "user", "content": "x"},
-             "toolUseResult": {"stdout": "{v}"}},
-            "stored", "toolUseResult.stdout",
+            {
+                "type": "user",
+                "message": {"role": "user", "content": "x"},
+                "toolUseResult": {"stdout": "{v}"},
+            },
+            "stored",
+            "toolUseResult.stdout",
         ),
         (
-            {"type": "assistant", "message": {"role": "assistant", "content": [
-                {"type": "thinking", "thinking": "maybe {v}"}]}},
-            "context", "message.content[0].thinking",
+            {
+                "type": "assistant",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "thinking", "thinking": "maybe {v}"}],
+                },
+            },
+            "context",
+            "message.content[0].thinking",
         ),
         (
-            {"type": "assistant", "message": {"role": "assistant", "content": [
-                {"type": "future_block", "data": "{v}"}]}},
-            "unknown", "message.content[0].data",
+            {
+                "type": "assistant",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "future_block", "data": "{v}"}],
+                },
+            },
+            "unknown",
+            "message.content[0].data",
         ),
         (
-            {"type": "assistant", "message": {"role": "assistant", "content": [
-                {"type": "server_tool_use", "id": "srv_1", "name": "web_fetch",
-                 "input": {"url": "https://api.invalid/?k={v}"}}]}},
-            "tool_call", "message.content[0].input.url",
+            {
+                "type": "assistant",
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "server_tool_use",
+                            "id": "srv_1",
+                            "name": "web_fetch",
+                            "input": {"url": "https://api.invalid/?k={v}"},
+                        }
+                    ],
+                },
+            },
+            "tool_call",
+            "message.content[0].input.url",
         ),
         (
-            {"type": "assistant", "message": {"role": "assistant", "model": "{v}",
-                                              "content": "x"}},
-            "stored", "message.model",
+            {"type": "assistant", "message": {"role": "assistant", "model": "{v}", "content": "x"}},
+            "stored",
+            "message.model",
         ),
         ({"type": "system", "content": "hook said {v}"}, "unknown", "content"),
     ],
@@ -287,8 +324,10 @@ def test_the_base64_data_of_an_image_block_is_not_searched(tmp_path: Path) -> No
 
     image = block("image", "image/png")
     in_result = {"type": "tool_result", "tool_use_id": "t", "content": [image]}
-    text = {"type": "document", "source": {"type": "text", "media_type": "text/plain",
-                                           "data": f"key {value}"}}
+    text = {
+        "type": "document",
+        "source": {"type": "text", "media_type": "text/plain", "data": f"key {value}"},
+    }
 
     def one(content: list[object]) -> fx.Run:
         record = {"type": "user", "message": {"role": "user", "content": content}}
@@ -322,15 +361,27 @@ def test_the_bytes_of_a_compressed_pdf_stream_are_not_searched(
     plain = f"({setup.values[fx.ACME]}) Tj".encode()
     packed = f"({setup.values[fx.GH]}) Tj".encode()
     pdf = (
-        b"%PDF-1.4\n1 0 obj << /Length " + str(len(plain)).encode() + b" >> stream\n"
-        + plain + b"\nendstream endobj\n" + before + b"2 0 obj << /Length "
-        + str(len(packed)).encode() + b" /Filter /FlateDecode >> stream\n" + packed
+        b"%PDF-1.4\n1 0 obj << /Length "
+        + str(len(plain)).encode()
+        + b" >> stream\n"
+        + plain
+        + b"\nendstream endobj\n"
+        + before
+        + b"2 0 obj << /Length "
+        + str(len(packed)).encode()
+        + b" /Filter /FlateDecode >> stream\n"
+        + packed
         + b"\nendstream endobj\n%%EOF\n"
     )
-    source = {"type": "base64", "media_type": "application/pdf",
-              "data": base64.b64encode(pdf).decode()}
-    record = {"type": "user", "message": {"role": "user", "content": [
-        {"type": "document", "source": source}]}}
+    source = {
+        "type": "base64",
+        "media_type": "application/pdf",
+        "data": base64.b64encode(pdf).decode(),
+    }
+    record = {
+        "type": "user",
+        "message": {"role": "user", "content": [{"type": "document", "source": source}]},
+    }
 
     report = _one_record(setup, tmp_path, record).report
 
@@ -380,10 +431,13 @@ def test_a_session_directory_is_read_with_its_subagents_and_tool_results(
     assert _only_hit(run, setup, fx.GH)["line"] == sub_line
     spilled = _only_hit(run, setup)
     assert (spilled["kind"], spilled["file"], spilled["line"]) == (
-        "stored", _shown(given, spill), 2,
+        "stored",
+        _shown(given, spill),
+        2,
     )
     assert ("not_scanned", _shown(given, project / "linked.jsonl")) in [
-        (u["reason"], u["subject"]) for u in report["unknown"]  # type: ignore[union-attr,index]
+        (u["reason"], u["subject"])
+        for u in report["unknown"]  # type: ignore[union-attr,index]
     ]
     assert run.exit_code == 1
 
@@ -393,33 +447,43 @@ def test_a_session_directory_is_read_with_its_subagents_and_tool_results(
 
 def test_otlp_outside_the_genai_attributes_is_unknown(tmp_path: Path) -> None:
     setup = fx.build(tmp_path)
-    span = cfx.span("GET", attributes=[cfx.kv("http.request.header.authorization",
-                                                f"Bearer {setup.values[fx.ACME]}")])
+    span = cfx.span(
+        "GET",
+        attributes=[cfx.kv("http.request.header.authorization", f"Bearer {setup.values[fx.ACME]}")],
+    )
     run = setup.audit([fx.write_otlp(tmp_path / "otlp.jsonl", span)])
     hit = _only_hit(run, setup)
     assert (hit["kind"], hit["location"]) == (
-        "unknown", "attributes.http.request.header.authorization",
+        "unknown",
+        "attributes.http.request.header.authorization",
     )
     assert run.exit_code == 3
 
 
 def test_otlp_input_messages_and_a_bytes_value_are_found(tmp_path: Path) -> None:
     setup = fx.build(tmp_path)
-    messages = json.dumps([{"role": "user", "parts": [
-        {"type": "text", "content": f"key {setup.values[fx.ACME]}"}]}])
+    messages = json.dumps(
+        [{"role": "user", "parts": [{"type": "text", "content": f"key {setup.values[fx.ACME]}"}]}]
+    )
     raw = base64.b64encode(f"gh={setup.values[fx.GH]}".encode()).decode()
-    span = cfx.span("chat m", attributes=[
-        cfx.kv("gen_ai.input.messages", messages),
-        {"key": "gen_ai.tool.call.result", "value": {"bytesValue": raw}},
-    ])
+    span = cfx.span(
+        "chat m",
+        attributes=[
+            cfx.kv("gen_ai.input.messages", messages),
+            {"key": "gen_ai.tool.call.result", "value": {"bytesValue": raw}},
+        ],
+    )
     run = setup.audit([fx.write_otlp(tmp_path / "otlp.jsonl", span)])
     hit = _only_hit(run, setup)
     assert (hit["kind"], hit["location"]) == (
-        "context", "attributes.gen_ai.input.messages[0].parts[0].content",
+        "context",
+        "attributes.gen_ai.input.messages[0].parts[0].content",
     )
     gh = _only_hit(run, setup, fx.GH)
     assert (gh["kind"], gh["location"], gh["form"]) == (
-        "context", "attributes.gen_ai.tool.call.result", "raw",
+        "context",
+        "attributes.gen_ai.tool.call.result",
+        "raw",
     )
 
 
@@ -511,7 +575,7 @@ def test_the_text_report_lays_out_hits_summaries_and_coverage(tmp_path: Path) ->
 
     acme = f"{fx.ACME} (launch env)"
     assert run.lines[0] == (
-        f"TOOL_CALL {acme} file={path}:{line} record=assistant tool=\"Bash\" argument=command"
+        f'TOOL_CALL {acme} file={path}:{line} record=assistant tool="Bash" argument=command'
         " at=message.content[0].input.command form=raw"
     )
     assert f"{acme}: in_tool_call (1 tool call, 0 context, 0 stored, 0 unknown)" in run.lines
@@ -569,27 +633,39 @@ def test_a_file_not_scanned_is_counted_beside_the_files_read(tmp_path: Path) -> 
 
 def test_an_otlp_resource_string_names_its_signal(tmp_path: Path) -> None:
     setup = fx.build(tmp_path)
-    request = json.loads(cfx.traces(
-        cfx.span("op"), resource=[cfx.kv("service.name", setup.values[fx.ACME])]
-    ))
+    request = json.loads(
+        cfx.traces(cfx.span("op"), resource=[cfx.kv("service.name", setup.values[fx.ACME])])
+    )
     path = tmp_path / "otlp.jsonl"
     cfx.write(path, json.dumps(request) + "\n")
     run = setup.audit([path])
     hit = _only_hit(run, setup)
     assert (hit["kind"], hit["signal"], hit["span"], hit["location"]) == (
-        "unknown", "traces", None, "resource.attributes.service.name",
+        "unknown",
+        "traces",
+        None,
+        "resource.attributes.service.name",
     )
 
 
 def test_tool_call_part_arguments_written_as_a_json_string_are_walked(tmp_path: Path) -> None:
     setup = fx.build(tmp_path)
     arguments = json.dumps({"headers": {"authorization": f"Bearer {setup.values[fx.ACME]}"}})
-    messages = [{"role": "assistant", "parts": [
-        {"type": "tool_call", "id": "call_1", "name": "http_get", "arguments": arguments}]}]
+    messages = [
+        {
+            "role": "assistant",
+            "parts": [
+                {"type": "tool_call", "id": "call_1", "name": "http_get", "arguments": arguments}
+            ],
+        }
+    ]
     run = setup.audit([fx.write_otlp(tmp_path / "otlp.jsonl", fx.chat_span(messages))])
     hit = _only_hit(run, setup)
     assert (hit["kind"], hit["tool"], hit["argument"], hit["form"]) == (
-        "tool_call", "http_get", "headers.authorization", "raw",
+        "tool_call",
+        "http_get",
+        "headers.authorization",
+        "raw",
     )
     assert hit["location"] == (
         "attributes.gen_ai.output.messages[0].parts[0].arguments.headers.authorization"
@@ -604,21 +680,34 @@ def test_a_tool_call_part_in_structured_output_messages_is_a_tool_call(
     arguments: object = {"command": f"curl -H 'x: {setup.values[fx.ACME]}'"}
     if arguments_as == "json_string":
         arguments = json.dumps(arguments)
-    messages = [{"role": "assistant", "parts": [
-        {"type": "text", "content": f"token {setup.values[fx.GH]}"},
-        {"type": "tool_call", "id": "call_1", "name": "Bash", "arguments": arguments}]}]
-    span = cfx.span("chat fake-model", attributes=[
-        {"key": "gen_ai.output.messages", "value": fx.any_value(messages)},
-    ])
+    messages = [
+        {
+            "role": "assistant",
+            "parts": [
+                {"type": "text", "content": f"token {setup.values[fx.GH]}"},
+                {"type": "tool_call", "id": "call_1", "name": "Bash", "arguments": arguments},
+            ],
+        }
+    ]
+    span = cfx.span(
+        "chat fake-model",
+        attributes=[
+            {"key": "gen_ai.output.messages", "value": fx.any_value(messages)},
+        ],
+    )
     run = setup.audit([fx.write_otlp(tmp_path / "otlp.jsonl", span)])
     hit = _only_hit(run, setup)
     assert (hit["kind"], hit["tool"], hit["argument"], hit["location"]) == (
-        "tool_call", "Bash", "command",
+        "tool_call",
+        "Bash",
+        "command",
         "attributes.gen_ai.output.messages[0].parts[1].arguments.command",
     )
     text = _only_hit(run, setup, fx.GH)
     assert (text["kind"], text["tool"], text["location"]) == (
-        "context", None, "attributes.gen_ai.output.messages[0].parts[0].content",
+        "context",
+        None,
+        "attributes.gen_ai.output.messages[0].parts[0].content",
     )
     assert fx.credential(run.report, setup.ids[fx.ACME])["state"] == "in_tool_call"
 
@@ -636,12 +725,18 @@ def test_claude_code_log_events_are_classified(tmp_path: Path) -> None:
     run = setup.audit([path])
     call = _only_hit(run, setup)
     assert (call["kind"], call["signal"], call["log_record"], call["tool"], call["argument"]) == (
-        "tool_call", "logs", 1, "Bash", "bash_command",
+        "tool_call",
+        "logs",
+        1,
+        "Bash",
+        "bash_command",
     )
     assert call["location"] == "attributes.tool_parameters.bash_command"
     prompt = _only_hit(run, setup, fx.GH)
     assert (prompt["kind"], prompt["log_record"], prompt["location"]) == (
-        "context", 0, "attributes.prompt",
+        "context",
+        0,
+        "attributes.prompt",
     )
     other = _only_hit(run, setup, fx.AWS_ID)
     assert (other["kind"], other["location"]) == ("unknown", "attributes.model")
@@ -650,11 +745,14 @@ def test_claude_code_log_events_are_classified(tmp_path: Path) -> None:
 
 def test_claude_code_log_attributes_in_a_span_are_unknown(tmp_path: Path) -> None:
     setup = fx.build(tmp_path)
-    span = cfx.span("tool", attributes=[
-        cfx.kv("tool_name", "Bash"),
-        cfx.kv("tool_parameters", json.dumps({"bash_command": setup.values[fx.ACME]})),
-        cfx.kv("prompt", setup.values[fx.GH]),
-    ])
+    span = cfx.span(
+        "tool",
+        attributes=[
+            cfx.kv("tool_name", "Bash"),
+            cfx.kv("tool_parameters", json.dumps({"bash_command": setup.values[fx.ACME]})),
+            cfx.kv("prompt", setup.values[fx.GH]),
+        ],
+    )
     run = setup.audit([fx.write_otlp(tmp_path / "otlp.jsonl", span)])
     assert [h["kind"] for h in fx.hits(run.report, setup.ids[fx.ACME])] == ["unknown"]
     assert [h["kind"] for h in fx.hits(run.report, setup.ids[fx.GH])] == ["unknown"]
@@ -669,15 +767,22 @@ def test_an_export_request_member_outside_the_signals_is_searched(
     request = json.loads(cfx.traces(cfx.span("op")))
     request["extra"] = {"note": setup.values[fx.ACME]}
     path = tmp_path / "otlp.json"
-    cfx.write(path, json.dumps(request) + "\n" if layout == "json_lines" else
-              json.dumps(request, indent=2))
+    cfx.write(
+        path,
+        json.dumps(request) + "\n" if layout == "json_lines" else json.dumps(request, indent=2),
+    )
     run = setup.audit([path])
     hit = _only_hit(run, setup)
     assert (hit["kind"], hit["format"], hit["signal"], hit["location"], hit["line"]) == (
-        "unknown", "otlp", None, "extra.note", 1,
+        "unknown",
+        "otlp",
+        None,
+        "extra.note",
+        1,
     )
     assert ("unknown_kind", f"{path}:1") in [
-        (u["reason"], u["subject"]) for u in run.report["unknown"]  # type: ignore[union-attr,index]
+        (u["reason"], u["subject"])
+        for u in run.report["unknown"]  # type: ignore[union-attr,index]
     ]
     assert (run.report["result"], run.exit_code) == ("unknown", 3)
 
@@ -722,7 +827,11 @@ def test_a_value_in_a_memory_or_claude_md_file_is_in_context(tmp_path: Path, nam
     run = setup.audit([given])
     hit = _only_hit(run, setup)
     assert (hit["kind"], hit["file"], hit["line"], hit["format"], hit["location"]) == (
-        "context", _shown(given, path), before.count("\n") + 1, "claude-code-memory", None,
+        "context",
+        _shown(given, path),
+        before.count("\n") + 1,
+        "claude-code-memory",
+        None,
     )
     assert fx.credential(run.report, setup.ids[fx.ACME])["state"] == "in_context"
     assert run.exit_code == 1
@@ -754,7 +863,8 @@ def test_memory_and_tool_results_files_are_recognised_from_a_relative_path(
     }
     hit = _only_hit(run, setup)
     assert (hit["kind"], hit["file"]) == (
-        "context", _shown(".", files["index"].relative_to(project.parent)),
+        "context",
+        _shown(".", files["index"].relative_to(project.parent)),
     )
     assert run.report["unknown"] == []
 
@@ -764,8 +874,9 @@ def test_memory_and_tool_results_files_are_recognised_from_a_relative_path(
     )
 
 
-@pytest.mark.parametrize("where", ["projects/p/notes.md", "work/memory/MEMORY.md",
-                                   "projects/p/memory/MEMORY.txt"])
+@pytest.mark.parametrize(
+    "where", ["projects/p/notes.md", "work/memory/MEMORY.md", "projects/p/memory/MEMORY.txt"]
+)
 def test_a_markdown_file_outside_the_memory_layout_is_unrecognised(
     tmp_path: Path, where: str
 ) -> None:
@@ -784,7 +895,8 @@ def test_a_whole_file_request_with_a_one_line_attribute_object_is_one_record(
     setup = fx.build(tmp_path)
     arguments = json.dumps({"command": f"curl -H 'x: {setup.values[fx.ACME]}'"})
     attributes = [
-        cfx.kv("gen_ai.tool.name", "Bash"), cfx.kv("gen_ai.tool.call.arguments", arguments),
+        cfx.kv("gen_ai.tool.name", "Bash"),
+        cfx.kv("gen_ai.tool.call.arguments", arguments),
     ]
     request = json.loads(cfx.traces(cfx.span("execute_tool Bash", attributes=attributes)))
     spans = request["resourceSpans"][0]["scopeSpans"][0]["spans"]
@@ -801,7 +913,10 @@ def test_a_whole_file_request_with_a_one_line_attribute_object_is_one_record(
     assert (row["format"], row["records"], row["unparsed_lines"]) == ("otlp", 1, 0)
     hit = _only_hit(run, setup)
     assert (hit["kind"], hit["tool"], hit["argument"], hit["line"]) == (
-        "tool_call", "Bash", "command", 1,
+        "tool_call",
+        "Bash",
+        "command",
+        1,
     )
     assert run.exit_code == 1
 
@@ -811,9 +926,12 @@ def _bookkeeping(setup: fx.Setup, kind: str) -> dict[str, object]:
     if kind == "summary":
         return {"type": "summary", "summary": f"Set token {value}", "leafUuid": "00000000-0000"}
     return {
-        "type": "file-history-snapshot", "messageId": "00000000-0001",
-        "snapshot": {"messageId": "00000000-0001", "trackedFileBackups": {
-            "/fake/.env": {"backupFileName": f"{value}@v1", "version": 1}}},
+        "type": "file-history-snapshot",
+        "messageId": "00000000-0001",
+        "snapshot": {
+            "messageId": "00000000-0001",
+            "trackedFileBackups": {"/fake/.env": {"backupFileName": f"{value}@v1", "version": 1}},
+        },
         "isSnapshotUpdate": False,
     }
 
@@ -822,14 +940,23 @@ def _bookkeeping(setup: fx.Setup, kind: str) -> dict[str, object]:
     ("kind", "hit_kind", "location", "exit_code"),
     [
         ("summary", "context", "summary", 1),
-        ("file-history-snapshot", "stored", "snapshot.trackedFileBackups./fake/.env.backupFileName",
-         0),
+        (
+            "file-history-snapshot",
+            "stored",
+            "snapshot.trackedFileBackups./fake/.env.backupFileName",
+            0,
+        ),
     ],
 )
 @pytest.mark.parametrize("config_dir", [None, "claude-config"])
 def test_a_claude_projects_file_of_bookkeeping_records_only_is_a_session(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, config_dir: str | None, kind: str,
-    hit_kind: str, location: str, exit_code: int,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    config_dir: str | None,
+    kind: str,
+    hit_kind: str,
+    location: str,
+    exit_code: int,
 ) -> None:
     setup = fx.build(tmp_path)
     claude = tmp_path / "home" / ".claude"
@@ -844,7 +971,10 @@ def test_a_claude_projects_file_of_bookkeeping_records_only_is_a_session(
     assert run.report["files"][0]["format"] == "claude-code"  # type: ignore[index]
     hit = _only_hit(run, setup)
     assert (hit["kind"], hit["record"], hit["location"], hit["line"]) == (
-        hit_kind, kind, location, 1,
+        hit_kind,
+        kind,
+        location,
+        1,
     )
     state = {"context": "in_context"}.get(hit_kind, hit_kind)
     assert fx.credential(run.report, setup.ids[fx.ACME])["state"] == state
@@ -895,19 +1025,32 @@ def test_a_type_that_is_not_a_string_is_unknown_not_a_crash(tmp_path: Path) -> N
     setup = fx.build(tmp_path)
     session = fx.Session()
     session.prompt("hello")
-    block_line = session.record({
-        "type": "assistant", "sessionId": fx.SESSION_ID,
-        "message": {"role": "assistant", "content": [
-            {"type": ["tool_use"], "id": "toolu_1", "name": "Bash",
-             "input": {"command": setup.values[fx.ACME]}}]},
-    })
+    block_line = session.record(
+        {
+            "type": "assistant",
+            "sessionId": fx.SESSION_ID,
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": ["tool_use"],
+                        "id": "toolu_1",
+                        "name": "Bash",
+                        "input": {"command": setup.values[fx.ACME]},
+                    }
+                ],
+            },
+        }
+    )
     record_line = session.record(
         {"type": {"kind": "user"}, "sessionId": fx.SESSION_ID, "data": setup.values[fx.GH]}
     )
     run = setup.audit([session.write(tmp_path / "s.jsonl")])
     block = _only_hit(run, setup)
     assert (block["kind"], block["line"], block["location"]) == (
-        "unknown", block_line, "message.content[0].input.command",
+        "unknown",
+        block_line,
+        "message.content[0].input.command",
     )
     record = _only_hit(run, setup, fx.GH)
     assert (record["kind"], record["line"], record["record"]) == ("unknown", record_line, None)
@@ -950,10 +1093,18 @@ def test_a_subagent_sidecar_is_bookkeeping_and_an_unknown_key_stays_unknown(
     sub = tmp_path / "home" / ".claude" / "projects" / "-fake-proj" / fx.SESSION_ID / "subagents"
     sub.mkdir(parents=True)
     known = sub / "agent-a1.meta.json"
-    cfx.write(known, json.dumps({
-        "agentType": "general-purpose", "description": f"check {setup.values[fx.ACME]}",
-        "finished": True, "spawnDepth": 1, "toolUseId": "toolu_01",
-    }))
+    cfx.write(
+        known,
+        json.dumps(
+            {
+                "agentType": "general-purpose",
+                "description": f"check {setup.values[fx.ACME]}",
+                "finished": True,
+                "spawnDepth": 1,
+                "toolUseId": "toolu_01",
+            }
+        ),
+    )
     run = setup.audit([known])
     (row,) = run.report["files"]  # type: ignore[misc]
     assert (row["format"], row["records"]) == ("claude-code-subagent-meta", 1)
@@ -980,7 +1131,8 @@ def test_a_subagent_sidecar_that_is_not_a_json_object_is_unparsed(tmp_path: Path
     run = setup.audit([broken])
     assert run.report["files"][0]["format"] == "claude-code-subagent-meta"  # type: ignore[index]
     assert ("unparsed_line", f"{broken}:1") in [
-        (u["reason"], u["subject"]) for u in run.report["unknown"]  # type: ignore[union-attr,index]
+        (u["reason"], u["subject"])
+        for u in run.report["unknown"]  # type: ignore[union-attr,index]
     ]
     assert run.exit_code == 3
 
@@ -1013,7 +1165,9 @@ def test_a_message_record_field_is_stored_only_when_the_contract_names_it(
 ) -> None:
     setup = fx.build(tmp_path)
     record: dict[str, object] = {
-        "type": "user", "sessionId": fx.SESSION_ID, "uuid": "00000000-0000-4000-8000-000000000001",
+        "type": "user",
+        "sessionId": fx.SESSION_ID,
+        "uuid": "00000000-0000-4000-8000-000000000001",
         "message": {"role": "user", "content": "hello"},
     }
     record.update(json.loads(json.dumps(where).replace("{v}", setup.values[fx.ACME])))
@@ -1128,6 +1282,142 @@ def test_a_message_record_of_an_unnamed_shape_is_unknown_not_stored(
     assert (run.report["result"], run.exit_code) == ("unknown", 3)
 
 
+# --- task-notification entity unescape (docs/audit.md, docs/statusline.md) ---
+
+
+def _notification_session(
+    setup: fx.Setup,
+    tmp_path: Path,
+    value: str,
+    escaped: str,
+) -> tuple[fx.Run, fx.Run]:
+    """Build two sessions: one with a task-notification record holding the
+    escaped form, one with a plain queue-operation (no task-notification tag)
+    holding the same escaped form. Returns (notification_run, plain_run)."""
+    notification = fx.Session()
+    notification.prompt("hello")
+    notification.record(
+        {
+            "type": "queue-operation",
+            "operation": "enqueue",
+            "content": f"<task-notification>token {escaped} end</task-notification>",
+            "sessionId": fx.SESSION_ID,
+        }
+    )
+    plain = fx.Session()
+    plain.prompt("hello")
+    plain.record(
+        {
+            "type": "queue-operation",
+            "content": f"plain {escaped} end",
+            "sessionId": fx.SESSION_ID,
+        }
+    )
+    n_run = setup.audit([notification.write(tmp_path / "n.jsonl")])
+    p_run = setup.audit([plain.write(tmp_path / "p.jsonl")])
+    return n_run, p_run
+
+
+def test_a_value_with_ampersand_is_found_in_a_task_notification(tmp_path: Path) -> None:
+    """A value holding ``&`` is stored as ``&amp;`` in task-notification text.
+    The unescape undoes it, so the audit finds the value."""
+    extra = "AMPERSAND_KEY=" + cfx.fake_value("amp-a", 10) + "&" + cfx.fake_value("amp-b", 10)
+    setup = fx.build(tmp_path, extra_env=extra + "\n")
+    value = setup.values.get("AMPERSAND_KEY") or extra.split("=", 1)[1]
+    escaped = value.replace("&", "&amp;")
+    n_run, p_run = _notification_session(setup, tmp_path, value, escaped)
+    assert fx.hits(n_run.report, setup.ids["AMPERSAND_KEY"]) != []
+    assert fx.hits(p_run.report, setup.ids["AMPERSAND_KEY"]) == []
+
+
+def test_a_value_with_angle_brackets_is_found_in_a_task_notification(tmp_path: Path) -> None:
+    """A value holding ``<`` and ``>`` is stored with ``&lt;`` and ``&gt;``."""
+    extra = "ANGLE_KEY=" + cfx.fake_value("angle-a", 8) + "<x>" + cfx.fake_value("angle-b", 8)
+    setup = fx.build(tmp_path, extra_env=extra + "\n")
+    value = extra.split("=", 1)[1]
+    escaped = value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    session = fx.Session()
+    session.prompt("hello")
+    session.record(
+        {
+            "type": "queue-operation",
+            "operation": "enqueue",
+            "content": f"<task-notification>token {escaped} end</task-notification>",
+            "sessionId": fx.SESSION_ID,
+        }
+    )
+    n_run = setup.audit([session.write(tmp_path / "n.jsonl")])
+    plain = fx.Session()
+    plain.prompt("hello")
+    plain.record(
+        {
+            "type": "queue-operation",
+            "content": f"plain {escaped} end",
+            "sessionId": fx.SESSION_ID,
+        }
+    )
+    p_run = setup.audit([plain.write(tmp_path / "p.jsonl")])
+    assert fx.hits(n_run.report, setup.ids["ANGLE_KEY"]) != []
+    assert fx.hits(p_run.report, setup.ids["ANGLE_KEY"]) == []
+
+
+def test_an_ordinary_value_is_still_found_in_a_task_notification(tmp_path: Path) -> None:
+    """A value with no entity characters is found as before."""
+    setup = fx.build(tmp_path)
+    value = setup.values[fx.ACME]
+    n_run, _ = _notification_session(setup, tmp_path, value, value)
+    assert fx.hits(n_run.report, setup.ids[fx.ACME]) != []
+
+
+def test_a_value_containing_literal_amp_is_not_double_decoded(tmp_path: Path) -> None:
+    """A value that itself contains the literal text ``&amp;`` is stored as
+    ``&amp;amp;``. The unescape produces ``&amp;``, matching the value, not
+    ``&`` (which would be a double decode)."""
+    extra = "AMPAMP_KEY=" + cfx.fake_value("ampamp-a", 8) + "&amp;" + cfx.fake_value("ampamp-b", 8)
+    setup = fx.build(tmp_path, extra_env=extra + "\n")
+    value = extra.split("=", 1)[1]
+    escaped = value.replace("&", "&amp;")
+    assert "&amp;amp;" in escaped
+    n_run, _ = _notification_session(setup, tmp_path, value, escaped)
+    assert fx.hits(n_run.report, setup.ids["AMPAMP_KEY"]) != []
+
+
+def test_a_queued_command_attachment_is_unescaped(tmp_path: Path) -> None:
+    """The queued_command attachment with commandMode task-notification
+    is unescaped in both its prompt and its rendered content."""
+    extra = "ATTACH_KEY=" + cfx.fake_value("attach-a", 10) + "&" + cfx.fake_value("attach-b", 10)
+    setup = fx.build(tmp_path, extra_env=extra + "\n")
+    value = extra.split("=", 1)[1]
+    escaped = value.replace("&", "&amp;")
+    session = fx.Session()
+    session.prompt("hello")
+    session.record(
+        {
+            "type": "attachment",
+            "attachment": {
+                "type": "queued_command",
+                "prompt": f"<task-notification>token {escaped} end</task-notification>",
+                "commandMode": "task-notification",
+            },
+            "rendered": [{"content": f"result: {escaped}"}],
+            "sessionId": fx.SESSION_ID,
+        }
+    )
+    run = setup.audit([session.write(tmp_path / "s.jsonl")])
+    assert fx.hits(run.report, setup.ids["ATTACH_KEY"]) != []
+
+
+def test_text_outside_task_notification_is_not_unescaped(tmp_path: Path) -> None:
+    """A queue-operation record without the enqueue operation and
+    task-notification tag is not unescaped: ``&amp;`` stays as written."""
+    extra = "NOESC_KEY=" + cfx.fake_value("noesc-a", 10) + "&" + cfx.fake_value("noesc-b", 10)
+    setup = fx.build(tmp_path, extra_env=extra + "\n")
+    value = extra.split("=", 1)[1]
+    escaped = value.replace("&", "&amp;")
+    _, p_run = _notification_session(setup, tmp_path, value, escaped)
+    assert fx.hits(p_run.report, setup.ids["NOESC_KEY"]) == []
+
+
 def test_the_json_literals_scanned_are_those_the_regular_expression_finds() -> None:
     """The json form stops scanning at the first quote with no closing quote
     after it, so text whose quotes are all escaped is linear, not quadratic;
@@ -1135,7 +1425,9 @@ def test_the_json_literals_scanned_are_those_the_regular_expression_finds() -> N
     rng = random.Random(5)
     for _ in range(3_000):
         text = "".join(rng.choice('ab"\\\\ \\n') for _ in range(rng.randrange(40)))
-        every = [(matching.json_unescape(m.group(1)), True)
-                 for m in matching._JSON_LITERAL.finditer(text)  # pyright: ignore[reportPrivateUsage]
-                 if "\\" in m.group(1)]
+        every = [
+            (matching.json_unescape(m.group(1)), True)
+            for m in matching._JSON_LITERAL.finditer(text)  # pyright: ignore[reportPrivateUsage]
+            if "\\" in m.group(1)
+        ]
         assert matching.json_texts(text)[1:] == every, text

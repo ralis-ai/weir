@@ -63,6 +63,13 @@
   ([docs/inventory.md](docs/inventory.md)).
 
 ### Fixed
+- **`weir audit` and the status line match task-notification text with
+  `&amp;`, `&lt;` and `&gt;` undone** (`weir-scan`). Claude Code writes
+  `&`, `<` and `>` as those three entities in a background MCP tool
+  result's task notification. A credential holding any of those characters
+  is now found in the queued-command attachment with command mode
+  `task-notification`, its rendered content, and the queue-operation
+  enqueue record.
 - **`weir canary judge` withholds a planted key's slice whatever its case**
   (`weir-scan`). The printing rule for capture-derived text compared
   6-character runs case-sensitively, so a flow that lowercased part of its

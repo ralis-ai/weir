@@ -123,7 +123,8 @@ def _is_claude_code(obj: dict[str, Json]) -> bool:
     """A Claude Code message record: `user` or `assistant`, a string
     `sessionId` and a `message` object. Two fields alone are not the shape."""
     return (
-        obj.get("type") in ("user", "assistant") and isinstance(obj.get("sessionId"), str)
+        obj.get("type") in ("user", "assistant")
+        and isinstance(obj.get("sessionId"), str)
         and isinstance(obj.get("message"), dict)
     )
 
@@ -143,7 +144,8 @@ def _is_session(where: PurePath, lines: list[Line], projects_dirs: Sequence[Pure
     if any(_is_claude_code(record) for record in records):
         return True
     return (
-        bool(records) and all(_str(r.get("type")) in _BOOKKEEPING_TYPES for r in records)
+        bool(records)
+        and all(_str(r.get("type")) in _BOOKKEEPING_TYPES for r in records)
         and _in_claude_projects(where, projects_dirs)
     )
 
@@ -162,7 +164,8 @@ def _is_claude_code_memory(path: PurePath, projects_dirs: Sequence[PurePath]) ->
     if path.name == "CLAUDE.md":
         return True
     return (
-        path.suffix == ".md" and path.parent.name == "memory"
+        path.suffix == ".md"
+        and path.parent.name == "memory"
         and _in_claude_projects(path, projects_dirs)
     )
 
@@ -207,10 +210,21 @@ def whole_otlp(data: bytes, lines: list[Line]) -> dict[str, Json] | None:
 
 # --- Claude Code session files ----------------------------------------------
 
-_STORED_TYPES = frozenset({
-    "queue-operation", "last-prompt", "cost-state", "atis-latch", "file-history-snapshot",
-    "custom-title", "agent-name", "tag", "permission-mode", "pr-link", "worktree-state",
-})
+_STORED_TYPES = frozenset(
+    {
+        "queue-operation",
+        "last-prompt",
+        "cost-state",
+        "atis-latch",
+        "file-history-snapshot",
+        "custom-title",
+        "agent-name",
+        "tag",
+        "permission-mode",
+        "pr-link",
+        "worktree-state",
+    }
+)
 _MESSAGE_TYPES = frozenset({"user", "assistant", "attachment", "summary"})
 # The types of a file of bookkeeping records beside a session, with no session id
 _BOOKKEEPING_TYPES = _STORED_TYPES | {"summary"}
@@ -221,17 +235,56 @@ _TOOL_BLOCKS = frozenset({"tool_use", "server_tool_use"})
 
 # docs/audit.md, "Claude Code session files": the bookkeeping fields of a
 # `user` or `assistant` record, and of its `message` object outside `content`.
-_RECORD_FIELDS = frozenset({
-    "parentUuid", "logicalParentUuid", "isSidechain", "type", "uuid", "timestamp", "cwd",
-    "sessionId", "version", "gitBranch", "userType", "entrypoint", "message", "toolUseResult",
-    "requestId", "isMeta", "isCompactSummary", "isVisibleInTranscriptOnly", "isApiErrorMessage",
-    "error", "promptId", "permissionMode", "promptSource", "turnOrigin", "turnPosition",
-    "perTurnEffort", "sourceToolAssistantUUID", "sourceToolUseID", "agentId", "slug",
-})
-_MESSAGE_FIELDS = frozenset({
-    "role", "model", "id", "type", "content", "stop_reason", "stop_sequence", "stop_details",
-    "usage", "container", "diagnostics", "context_management",
-})
+_RECORD_FIELDS = frozenset(
+    {
+        "parentUuid",
+        "logicalParentUuid",
+        "isSidechain",
+        "type",
+        "uuid",
+        "timestamp",
+        "cwd",
+        "sessionId",
+        "version",
+        "gitBranch",
+        "userType",
+        "entrypoint",
+        "message",
+        "toolUseResult",
+        "requestId",
+        "isMeta",
+        "isCompactSummary",
+        "isVisibleInTranscriptOnly",
+        "isApiErrorMessage",
+        "error",
+        "promptId",
+        "permissionMode",
+        "promptSource",
+        "turnOrigin",
+        "turnPosition",
+        "perTurnEffort",
+        "sourceToolAssistantUUID",
+        "sourceToolUseID",
+        "agentId",
+        "slug",
+    }
+)
+_MESSAGE_FIELDS = frozenset(
+    {
+        "role",
+        "model",
+        "id",
+        "type",
+        "content",
+        "stop_reason",
+        "stop_sequence",
+        "stop_details",
+        "usage",
+        "container",
+        "diagnostics",
+        "context_management",
+    }
+)
 
 _CONTEXT = Place(Kind.CONTEXT)
 _STORED = Place(Kind.STORED)
@@ -245,10 +298,18 @@ def _str(value: Json) -> str | None:
 # docs/audit.md, "Claude Code session files": the keys of the sidecar Claude
 # Code keeps beside a subagent's transcript. Bookkeeping: none of it is sent
 # to the model as it is written there.
-_SUBAGENT_META_KEYS = frozenset({
-    "agentType", "description", "finished", "launchedWithDefaults", "requestNonInteractive",
-    "requestShape", "spawnDepth", "toolUseId",
-})
+_SUBAGENT_META_KEYS = frozenset(
+    {
+        "agentType",
+        "description",
+        "finished",
+        "launchedWithDefaults",
+        "requestNonInteractive",
+        "requestShape",
+        "spawnDepth",
+        "toolUseId",
+    }
+)
 
 
 def subagent_meta_sites(meta: dict[str, Json]) -> Iterator[Site]:
@@ -272,9 +333,7 @@ def recognised(record: dict[str, Json]) -> bool:
     return _str(record.get("type")) in _RECOGNISED_TYPES
 
 
-def _content_place(
-    record_type: str, content: Json, path: Path_, tools: dict[str, str]
-) -> Place:
+def _content_place(record_type: str, content: Json, path: Path_, tools: dict[str, str]) -> Place:
     if isinstance(content, str):
         return _CONTEXT
     if not isinstance(content, list):
@@ -358,7 +417,8 @@ def _base64_blocks(record: dict[str, Json]) -> Iterator[tuple[str, Path_, Json]]
             source = node.get("source")
             block = _str(node.get("type"))
             if (
-                block in ("image", "document") and isinstance(source, dict)
+                block in ("image", "document")
+                and isinstance(source, dict)
                 and source.get("type") == "base64"
             ):
                 yield block, (*path, "source", "data"), source.get("data")
@@ -421,14 +481,44 @@ def attachments(record: dict[str, Json]) -> Attachments:
     return Attachments(frozenset(images), encoded)
 
 
+def _is_task_notification(record: dict[str, Json]) -> bool:
+    """A queued_command attachment with commandMode task-notification, or a
+    queue-operation enqueue whose content holds a <task-notification> tag."""
+    rtype = record.get("type")
+    if rtype == "attachment":
+        att = record.get("attachment")
+        return (
+            isinstance(att, dict)
+            and att.get("type") == "queued_command"
+            and att.get("commandMode") == "task-notification"
+        )
+    if rtype == "queue-operation":
+        content = record.get("content")
+        return (
+            record.get("operation") == "enqueue"
+            and isinstance(content, str)
+            and "<task-notification>" in content
+        )
+    return False
+
+
+def _unescape_notification_entities(text: str) -> str:
+    """Undo the three XML entities Claude Code writes in task-notification
+    text, ``&amp;`` last so ``&amp;lt;`` becomes ``&lt;``, not ``<``."""
+    return text.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
+
+
 def claude_code_sites(
     record: dict[str, Json], tools: dict[str, str], attached: Attachments
 ) -> Iterator[Site]:
     record_type = record.get("type")
     shown = record_type if isinstance(record_type, str) else None
+    notification = _is_task_notification(record)
     for string, path in strings(record):
         if path not in attached.images:
             string = attached.encoded.get(path, string)
+            if notification:
+                string = _unescape_notification_entities(string)
             yield Site(string, path, claude_code_place(record, path, tools), record_type=shown)
 
 
@@ -445,7 +535,9 @@ _PROMPT = "prompt"
 _LOG_ATTRIBUTES = _GENAI | {_PARAMETERS, _PROMPT}
 # The attribute that names the tool of each attribute that has one
 _TOOL_NAMES = {
-    _ARGUMENTS: "gen_ai.tool.name", _RESULT: "gen_ai.tool.name", _PARAMETERS: "tool_name",
+    _ARGUMENTS: "gen_ai.tool.name",
+    _RESULT: "gen_ai.tool.name",
+    _PARAMETERS: "tool_name",
 }
 
 # The string at a location within an attribute's value, or None
@@ -465,8 +557,12 @@ def _otlp_place(attribute: str, sub: Path_, tool: str | None, at: Lookup) -> Pla
     if attribute == _RESULT:
         return Place(Kind.CONTEXT, tool=tool)
     if (
-        attribute == _OUTPUT and len(sub) >= 4 and isinstance(sub[0], int)
-        and sub[1] == "parts" and isinstance(sub[2], int) and sub[3] == "arguments"
+        attribute == _OUTPUT
+        and len(sub) >= 4
+        and isinstance(sub[0], int)
+        and sub[1] == "parts"
+        and isinstance(sub[2], int)
+        and sub[3] == "arguments"
         and at((*sub[:3], "type")) == "tool_call"
     ):
         return Place(Kind.TOOL_CALL, tool=at((*sub[:3], "name")), argument=sub[4:] or None)
@@ -507,8 +603,10 @@ def otlp_sites(request: dict[str, Json]) -> list[Site]:
     # last string at a location is its value, or the key when there is none.
     named: dict[tuple[Record, Path_], str] = {}
     for site in walk.sites:
-        if site.record is not None and site.location and site.location[-1] in (
-            "type", "name", *_TOOL_NAMES.values()
+        if (
+            site.record is not None
+            and site.location
+            and site.location[-1] in ("type", "name", *_TOOL_NAMES.values())
         ):
             named[(site.record, site.location)] = _text(site.data)
 
@@ -537,8 +635,10 @@ def otlp_sites(request: dict[str, Json]) -> list[Site]:
             pieces = [(string, sub, _otlp_place(attribute, sub, tool, in_value(record, head)))]
         else:
             at = _in_document(doc)
-            pieces = [(inner, path, _otlp_place(attribute, path, tool, at))
-                      for inner, path in strings(doc)]
+            pieces = [
+                (inner, path, _otlp_place(attribute, path, tool, at))
+                for inner, path in strings(doc)
+            ]
         for inner, path, place in pieces:
             in_part = place.kind is Kind.TOOL_CALL and attribute == _OUTPUT
             arguments = _json_document(inner) if in_part else None
