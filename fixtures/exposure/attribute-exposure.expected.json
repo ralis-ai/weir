@@ -217,6 +217,27 @@
     },
     {
       "demotion_reasons": [
+        "value shape not eligible for url_with_password"
+      ],
+      "fingerprint": null,
+      "fingerprint_v": 1,
+      "is_verdict_grade": false,
+      "last4": null,
+      "location": "attributes.gen_ai.tool.call.arguments",
+      "log_record": null,
+      "prefix": "password",
+      "rule_id": "url-password-in-telemetry",
+      "rule_version": "1.0.0",
+      "severity": "high",
+      "site_key": 11,
+      "source_class": "url_with_password",
+      "span_key": 6,
+      "span_name": "execute_tool Write",
+      "span_ref": "8888888888888888",
+      "value_len": 6
+    },
+    {
+      "demotion_reasons": [
         "value shape not eligible for github_token"
       ],
       "fingerprint": null,
@@ -382,27 +403,6 @@
       "span_name": "execute_tool Write",
       "span_ref": "8888888888888888",
       "value_len": 24
-    },
-    {
-      "demotion_reasons": [
-        "value shape not eligible for url_with_password"
-      ],
-      "fingerprint": null,
-      "fingerprint_v": 1,
-      "is_verdict_grade": false,
-      "last4": null,
-      "location": "attributes.gen_ai.tool.call.arguments",
-      "log_record": null,
-      "prefix": "password",
-      "rule_id": "url-password-in-telemetry",
-      "rule_version": "1.0.0",
-      "severity": "high",
-      "site_key": 11,
-      "source_class": "url_with_password",
-      "span_key": 6,
-      "span_name": "execute_tool Write",
-      "span_ref": "8888888888888888",
-      "value_len": 6
     },
     {
       "demotion_reasons": [
@@ -686,6 +686,21 @@
         "last4": null,
         "location": "attributes.gen_ai.tool.call.arguments",
         "log_record": null,
+        "prefix": "password",
+        "site_key": 11,
+        "source_class": "url_with_password",
+        "span_key": 6,
+        "span_name": "execute_tool Write",
+        "span_ref": "8888888888888888",
+        "value_len": 6
+      },
+      {
+        "eligible": false,
+        "fingerprint": null,
+        "fingerprint_v": 1,
+        "last4": null,
+        "location": "attributes.gen_ai.tool.call.arguments",
+        "log_record": null,
         "prefix": "ghp_",
         "site_key": 11,
         "source_class": "github_token",
@@ -798,21 +813,6 @@
         "span_name": "execute_tool Write",
         "span_ref": "8888888888888888",
         "value_len": 24
-      },
-      {
-        "eligible": false,
-        "fingerprint": null,
-        "fingerprint_v": 1,
-        "last4": null,
-        "location": "attributes.gen_ai.tool.call.arguments",
-        "log_record": null,
-        "prefix": "password",
-        "site_key": 11,
-        "source_class": "url_with_password",
-        "span_key": 6,
-        "span_name": "execute_tool Write",
-        "span_ref": "8888888888888888",
-        "value_len": 6
       },
       {
         "eligible": false,
