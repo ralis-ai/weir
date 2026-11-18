@@ -89,6 +89,45 @@ def test_jsonl_batches_merge_and_bad_line_degrades_not_rejects() -> None:
     assert len(wire.spans) == 2
     assert [d.reason for d in wire.degradations] == [DegradationReason.UNDECODABLE_BATCH]
     assert wire.degradations[0].subject == "line:2"
+    assert wire.batches_not_scanned == 1
+
+
+def test_a_non_object_jsonl_line_counts_as_not_scanned() -> None:
+    good = json.dumps(_minimal_doc())
+    data = (good + '\n"just a string"\n42\nnull\n').encode()
+    wire = decode_input(data)
+    assert len(wire.spans) == 1
+    assert wire.batches_not_scanned == 3
+
+
+def test_a_non_object_array_member_counts_as_not_scanned() -> None:
+    data = json.dumps([_minimal_doc(), "stray", 42]).encode()
+    wire = decode_input(data)
+    assert len(wire.spans) == 1
+    assert wire.batches_not_scanned == 2
+
+
+def test_crlf_line_endings_do_not_break_line_counting() -> None:
+    good = json.dumps(_minimal_doc())
+    data = (good + "\r\n{not json\r\n" + good + "\r\n").encode()
+    wire = decode_input(data)
+    assert len(wire.spans) == 2
+    assert wire.batches_not_scanned == 1
+
+
+def test_trailing_line_with_no_newline_is_read() -> None:
+    good = json.dumps(_minimal_doc())
+    data = (good + "\n" + good).encode()
+    wire = decode_input(data)
+    assert len(wire.spans) == 2
+    assert wire.batches_not_scanned == 0
+
+
+def test_all_lines_readable_still_clean() -> None:
+    good = json.dumps(_minimal_doc())
+    data = (good + "\n" + good + "\n").encode()
+    wire = decode_input(data)
+    assert wire.batches_not_scanned == 0
 
 
 def test_undecodable_span_is_quarantined_not_fatal() -> None:

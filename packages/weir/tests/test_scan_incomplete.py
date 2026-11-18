@@ -423,6 +423,53 @@ def test_a_metrics_only_export_is_read_as_otlp_and_exits_3(kind: str, input_form
     assert not_scanned == [ln for ln in gauge_stdout if "not scanned" in ln]
 
 
+def test_a_truncated_jsonl_line_counts_as_not_scanned() -> None:
+    body = _lines(_CLEAN) + '{"resourceSpans": [{truncated\n'
+    control = _lines(_CLEAN)
+    assert (_unread(body), _unread(control)) == (1, 0)
+    code, stdout, html, gauge = _cli(body)
+    control_code, _, _, _ = _cli(control)
+    assert (control_code, code, gauge) == (0, 3, 0)
+    assert stdout.splitlines()[-1] == _INCOMPLETE
+    assert 'class="incomplete-screen"' in html
+
+
+def test_a_non_object_jsonl_line_counts_as_not_scanned() -> None:
+    body = _lines(_CLEAN) + '"just a string"\n'
+    control = _lines(_CLEAN)
+    assert (_unread(body), _unread(control)) == (1, 0)
+    code, stdout, html, gauge = _cli(body)
+    control_code, _, _, _ = _cli(control)
+    assert (control_code, code, gauge) == (0, 3, 0)
+    assert stdout.splitlines()[-1] == _INCOMPLETE
+    assert 'class="incomplete-screen"' in html
+
+
+def test_a_non_object_array_member_counts_as_not_scanned() -> None:
+    body = json.dumps([json.loads(_lines(_CLEAN).strip()), "stray"])
+    control = json.dumps([json.loads(_lines(_CLEAN).strip())])
+    assert (_unread(body), _unread(control)) == (1, 0)
+    code, stdout = _run("scan", body, "otlp")
+    control_code, _ = _run("scan", control, "otlp")
+    assert (control_code, code) == (0, 3)
+    assert stdout[-1] == _INCOMPLETE
+    gauge_code, _ = _run("gauge", body, "otlp")
+    assert gauge_code == 0
+
+
+def test_a_top_level_array_mixing_objects_and_non_objects() -> None:
+    doc = json.loads(_lines(_CLEAN).strip())
+    body = json.dumps([doc, "stray", 42, doc])
+    control = json.dumps([doc, doc])
+    assert (_unread(body), _unread(control)) == (2, 0)
+    code, stdout = _run("scan", body, "otlp")
+    control_code, _ = _run("scan", control, "otlp")
+    assert (control_code, code) == (0, 3)
+    assert stdout[-1] == _INCOMPLETE
+    gauge_code, _ = _run("gauge", body, "otlp")
+    assert gauge_code == 0
+
+
 @pytest.mark.parametrize("input_format", ["auto", "otlp"])
 @pytest.mark.parametrize("command", ["scan", "gauge"])
 def test_json_with_no_otlp_signal_is_still_unusable_input(command: str, input_format: str) -> None:

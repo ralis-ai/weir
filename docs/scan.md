@@ -160,16 +160,17 @@ Any that can export OpenTelemetry spans to a file.
   `weir gauge` tells you whether it is.
 - The key scan reads spans and log records only. Metrics, or anything else
   in the export, are not scanned, and the output says so
-  (`data in 1 batch not scanned`) instead of reporting them clean. So is
-  span or log-record data in a shape the scan cannot read, such as a span
-  that fails to decode, a span value in a snake_case wrapper or in
-  `bytesValue`, or log-record bytes that are not UTF-8
-  (`1 value not scanned`), and so is a field OTLP does not define that
-  holds anything but `null` or an empty string, list or object, at any
-  level from the `resourceSpans` or `resourceLogs` element down to an
-  attribute value, and a string escaped deeper than the [decoded
-  view](#json-escapes) reads. That field is counted, never read: its name and value
-  are not printed. Such an export never passes clean:
+  (`data in 1 batch not scanned`) instead of reporting them clean. So are
+  input lines that are not valid JSON, lines or top-level array members
+  that decode to something other than an object, span or log-record data
+  in a shape the scan cannot read, such as a span that fails to decode, a
+  span value in a snake_case wrapper or in `bytesValue`, or log-record
+  bytes that are not UTF-8 (`1 value not scanned`), and so is a field OTLP
+  does not define that holds anything but `null` or an empty string, list
+  or object, at any level from the `resourceSpans` or `resourceLogs`
+  element down to an attribute value, and a string escaped deeper than the
+  [decoded view](#json-escapes) reads. That field is counted, never read:
+  its name and value are not printed. Such an export never passes clean:
   unless a finding makes it exit 1, `weir scan` exits 3, its last line is
   `incomplete: the export holds data the scan did not read (see above)`,
   and the HTML report shows an incomplete notice in place of the green

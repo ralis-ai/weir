@@ -150,15 +150,18 @@ def _normalize_keys(value: object) -> object:
     return value
 
 
-def _parse_lines(data: bytes) -> tuple[list[dict[str, object]], list[Degradation]]:
+def _parse_lines(data: bytes) -> tuple[list[dict[str, object]], list[Degradation], int]:
     """One JSON document, a top-level JSON array of batch objects, or JSONL
     (one batch per line). Raises OtlpRejectError only when NOTHING decodes
-    as JSON. Encoding is STRICT first: invalid UTF-8 is a named degradation
-    with its byte offset, never a silent U+FFFD - content bytes feed
-    mined-id extraction and taint payloads, so a lossy decode cannot be
+    as JSON. The third return value counts lines or array members that
+    decoded as non-objects or failed to decode at all: input the caller
+    never read. Encoding is STRICT first: invalid UTF-8 is a named
+    degradation with its byte offset, never a silent U+FFFD - content bytes
+    feed mined-id extraction and taint payloads, so a lossy decode cannot be
     silent in this system."""
     stripped = data.removeprefix(_BOM)
     degradations: list[Degradation] = []
+    not_decoded = 0
     try:
         text = stripped.decode("utf-8")
     except UnicodeDecodeError as exc:
@@ -175,17 +178,19 @@ def _parse_lines(data: bytes) -> tuple[list[dict[str, object]], list[Degradation
     except json.JSONDecodeError:
         document = None
     if isinstance(document, dict):
-        return [cast("dict[str, object]", document)], degradations
+        return [cast("dict[str, object]", document)], degradations, 0
     if isinstance(document, list):
-        wrapped = [
-            cast("dict[str, object]", d)
-            for d in cast("list[object]", document)
-            if isinstance(d, dict)
-        ]
+        wrapped: list[dict[str, object]] = []
+        for member in cast("list[object]", document):
+            if isinstance(member, dict):
+                wrapped.append(cast("dict[str, object]", member))
+            else:
+                not_decoded += 1
         if wrapped:
-            return wrapped, degradations
+            return wrapped, degradations, not_decoded
 
     batches: list[dict[str, object]] = []
+    not_decoded = 0
     for line_no, line in enumerate(text.splitlines(), start=1):
         if not line.strip():
             continue
@@ -199,14 +204,17 @@ def _parse_lines(data: bytes) -> tuple[list[dict[str, object]], list[Degradation
                     note=str(exc),
                 )
             )
+            not_decoded += 1
             continue
         if isinstance(parsed, dict):
             batches.append(cast("dict[str, object]", parsed))
+        else:
+            not_decoded += 1
     if not batches:
         raise OtlpRejectError(
             "input is not JSON: neither a JSON document nor JSON Lines"
         )
-    return batches, degradations
+    return batches, degradations, not_decoded
 
 
 _READ_SIGNALS = ("resourceSpans", "resourceLogs")
@@ -274,14 +282,14 @@ def _scoped(
 
 
 def decode_input(data: bytes) -> WireInput:
-    batches, degradations = _parse_lines(data)
+    batches, degradations, lines_not_decoded = _parse_lines(data)
     spans: list[SpanInContext] = []
     log_records: list[LogRecordInContext] = []
     log_position = -1
     saw_otlp_shape = False
     has_traces = False
     non_trace_batches = 0
-    batches_not_scanned = 0
+    batches_not_scanned = lines_not_decoded
     values_not_scanned = 0
 
     for batch in batches:

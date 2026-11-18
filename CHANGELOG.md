@@ -69,6 +69,15 @@
   fake key (for example into a host name) could print that lowercased slice.
   The comparison now ignores letter case, consistent with weir-run's own
   withholding for refused egress hosts.
+- **`weir scan` counts lines it could not read as not scanned**
+  (`weir-scan`). In a JSON Lines export, a line that was not valid JSON
+  was noted but not counted as not scanned, and a line that decoded to
+  something other than an object (or a non-object member of a top-level
+  JSON array) was dropped with no note at all. When other lines were fine,
+  the scan could come back clean although part of the input was never read.
+  Each such entry now counts toward the not-scanned report, so `weir scan`
+  exits 3 (incomplete) and `weir gauge` prints the same not-scanned line
+  ([docs/scan.md](docs/scan.md#limits)).
 - **`weir scan` accepts a metrics-only export and reports it incomplete**
   (`weir-scan`). An OTLP export whose only signal is metrics (a
   `resourceMetrics` list, empty or not, with no `resourceSpans` or
