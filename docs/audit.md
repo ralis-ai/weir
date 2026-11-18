@@ -493,12 +493,11 @@ credentials and the matching rules above. The audit does not find:
   line-wrapped value, or a value holding a separator that no line,
   assignment, quoted run, PEM or word rule takes whole;
 - a value hashed, encrypted, compressed, or encoded in a way not listed
-  (URL-encoded base64, UTF-16, HTML entities). In particular, a
-  background MCP tool result is HTML-escaped in the task notification
-  that Claude Code 2.1.325 stores in the session file: `&`, `<` and `>`
-  are written as `&amp;`, `&lt;` and `&gt;`, so a key holding any of
-  those characters is present only in its escaped form and is not
-  found;
+  (URL-encoded base64, UTF-16, HTML entities other than the three that
+  task-notification text undoes). Task-notification text (the
+  queued-command attachment with command mode `task-notification`, its
+  rendered content, and the queue-operation enqueue record) is matched
+  with `&amp;`, `&lt;` and `&gt;` undone;
 - a credential whose value changed since the inventory ran (its
   fingerprint is of the old value);
 - anything in the agent's context that is not in the files given: a
