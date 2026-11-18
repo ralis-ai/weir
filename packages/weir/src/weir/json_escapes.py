@@ -68,6 +68,31 @@ def unescape(data: bytes) -> bytes:
     return _ESCAPE.sub(_character, data)
 
 
+def unescape_map(data: bytes) -> tuple[bytes, tuple[bool, ...]]:
+    """`unescape(data)` paired with a per-byte escape mask.
+
+    ``mask[i]`` is True when byte *i* of the result was decoded from a
+    JSON escape, False when it was kept verbatim from *data*.  Uses the
+    same escape regex as `unescape`.  Cost: one pass, linear in
+    ``len(data)``.
+    """
+    result = bytearray()
+    mask: list[bool] = []
+    pos = 0
+    for m in _ESCAPE.finditer(data):
+        n = m.start() - pos
+        result.extend(data[pos : m.start()])
+        mask.extend([False] * n)
+        decoded = _character(m)
+        result.extend(decoded)
+        mask.extend([True] * len(decoded))
+        pos = m.end()
+    n = len(data) - pos
+    result.extend(data[pos:])
+    mask.extend([False] * n)
+    return bytes(result), tuple(mask)
+
+
 @dataclass(frozen=True)
 class View:
     """The texts of `data` unescaped once, twice and so on, while one still

@@ -4,7 +4,13 @@ rather than a stage of it.
 
 The strings arrive already enumerated by `weir.adapters.otel.exposure`, which
 is why this module needs no wire model and never imports `weir.adapters` - the
-"Analysis-path purity" contract holds it to that.
+"Analysis-path purity" contract holds it to that. Each string is read as
+written and through its decoded view (docs/scan.md, "JSON escapes"), which
+the walk hands over beside it. The two readings are reconciled by the
+escape-locality rule: a match that no escape lies inside or right next to
+is decided as written; where an escape lies inside or right next to a match,
+the decoded reading decides; and a decoded match that no escape touched is
+the written one again and adds nothing.
 
 This is also the one place the matched values and the names they sit under
 are both in hand, so it is where a span id, span name or location key that
@@ -14,6 +20,7 @@ Every renderer downstream prints hits as they are and cannot get a name back.
 
 from __future__ import annotations
 
+import bisect
 import hashlib
 import re
 from collections.abc import Callable
@@ -34,6 +41,7 @@ from weir.catalog import (
     matched_value,
 )
 from weir.exposure._types import ExposureHit, ExposureScan
+from weir.json_escapes import unescape
 from weir.schema.exposure import ExposureSurface, ScannedString, Segment, format_location
 
 FINGERPRINT_VERSION = 1
@@ -64,6 +72,8 @@ class _RawHit(msgspec.Struct, frozen=True):
     path: tuple[Segment, ...]
     key: bool
     location: str
+    # How many unescapings gave the text the hit is in: 0 as written.
+    unescapings: int
     start: int
     spec: SourceSpec
     value: str
@@ -72,9 +82,9 @@ class _RawHit(msgspec.Struct, frozen=True):
 
 
 class _Candidate(NamedTuple):
-    """One match at one (span, location), before subsumption. `value_start`,
-    `value_end` and `has_group` exist only to decide subsumption at THIS
-    location, so they never make it into `_RawHit`."""
+    """One match at one (span, location). `value_start`, `value_end`,
+    `has_group` and `subsumed` exist only to decide subsumption and claims
+    (`_claims`) at THIS location, so they never make it into `_RawHit`."""
 
     spec: SourceSpec
     start: int
@@ -84,6 +94,7 @@ class _Candidate(NamedTuple):
     value_start: int
     value_end: int
     has_group: bool
+    subsumed: bool = False
 
 
 def _fingerprint(value: str) -> str:
@@ -99,7 +110,7 @@ def _literal_prefix(pattern: str) -> str:
     every tie - correct, since neither is a prefix refinement of anything."""
     for boundary in _LEADING_BOUNDARIES:
         if pattern.startswith(boundary):
-            pattern = pattern[len(boundary):]
+            pattern = pattern[len(boundary) :]
             break
     out: list[str] = []
     for ch in pattern:
@@ -135,9 +146,13 @@ def _subsumed(cand: _Candidate, candidates: list[_Candidate]) -> bool:
     )
 
 
-def _raw_hits_for(
-    scanned: ScannedString, classes: list[tuple[SourceSpec, re.Pattern[str], int]]
-) -> list[_RawHit]:
+_Classes = list[tuple[SourceSpec, re.Pattern[str], int]]
+
+
+def _candidates(text: str, classes: _Classes) -> list[_Candidate]:
+    """Every match in one text, each flagged `subsumed` when `_subsumed`
+    drops it: `_claims` reads a subsumed match to drop the same claim
+    found with fewer unescapings."""
     # Class assignment happens BEFORE eligibility and is final: at one offset
     # the longest literal prefix wins, so one value yields one hit per
     # location, never two. An sk-ant- value that fails the strict Anthropic
@@ -148,7 +163,6 @@ def _raw_hits_for(
     # `(?i)`-prefixed `credential_field`) falls back to catalog list order -
     # no bundled pair collides at one offset, so this is untested by design,
     # not unhandled.
-    text = scanned.text if scanned.header is None else f"{scanned.header}: {scanned.text}"
     best: dict[int, tuple[int, SourceSpec, re.Match[str]]] = {}
     for spec, pattern, prefix_len in classes:
         for match in pattern.finditer(text):
@@ -186,15 +200,129 @@ def _raw_hits_for(
             _Candidate(spec, start, value, prefix, eligible, value_start, value_end, has_group)
         )
 
+    return [cand._replace(subsumed=_subsumed(cand, candidates)) for cand in candidates]
+
+
+# The str form of the JSON escape regex (`weir.json_escapes._ESCAPE`),
+# same pattern, used to find escape character spans in the read string.
+_ESCAPE_RE = re.compile(
+    r"\\(?:"
+    r"u[dD][89abAB][0-9a-fA-F]{2}\\u[dD][c-fC-F][0-9a-fA-F]{2}"
+    r"|u[0-9a-fA-F]{4}"
+    r'|["\\/bfnrt]'
+    r")"
+)
+
+
+def _escape_spans(text: str) -> tuple[list[int], list[int]]:
+    """Sorted start and end lists of JSON escape spans in `text`."""
+    starts: list[int] = []
+    ends: list[int] = []
+    for m in _ESCAPE_RE.finditer(text):
+        starts.append(m.start())
+        ends.append(m.end())
+    return starts, ends
+
+
+def _escape_near(
+    starts: list[int],
+    ends: list[int],
+    value_start: int,
+    value_end: int,
+) -> bool:
+    """Whether any escape span overlaps with [value_start - 1, value_end]."""
+    lo = value_start - 1
+    j = bisect.bisect_right(ends, lo)
+    return j < len(starts) and starts[j] <= value_end
+
+
+def _mask_near(mask: tuple[bool, ...], value_start: int, value_end: int) -> bool:
+    """Whether any mask position in [value_start - 1, value_end] is True."""
+    lo = max(0, value_start - 1)
+    hi = min(len(mask), value_end + 1)
+    return any(mask[lo:hi])
+
+
+def _claims(
+    found: list[tuple[int, str, _Candidate, tuple[bool, ...] | None]],
+) -> list[tuple[int, _Candidate]]:
+    """One string's matches across its texts, one per claim.
+
+    The escape-locality rule: a match that no escape lies inside or right
+    next to is decided as written (exactly the result for it without the
+    decoded view).  Where an escape lies inside or right next to a match,
+    the decoded reading decides.  And a decoded match that no escape
+    touched is the written one again and adds nothing.
+    """
+    if all(level == 0 for level, _, _, _ in found):
+        return [(level, cand) for level, _, cand, _ in found if not cand.subsumed]
+
+    level0_text = next((text for level, text, _, _ in found if level == 0), None)
+    if level0_text is not None:
+        esc_starts, esc_ends = _escape_spans(level0_text)
+    else:
+        esc_starts, esc_ends = [], []
+
+    kept: list[tuple[int, _Candidate]] = []
+    for level, _text, cand, mask in found:
+        if cand.subsumed:
+            continue
+        if level == 0:
+            if not _escape_near(esc_starts, esc_ends, cand.value_start, cand.value_end):
+                kept.append((level, cand))
+        else:
+            if mask is not None and _mask_near(mask, cand.value_start, cand.value_end):
+                kept.append((level, cand))
+
+    final: list[tuple[int, _Candidate]] = []
+    for level, cand in kept:
+        if level == 0:
+            final.append((level, cand))
+            continue
+        unesc = unescape(cand.value.encode("utf-8", "surrogatepass")).decode(
+            "utf-8", "surrogatepass"
+        )
+        if unesc != cand.value and any(
+            ol > level and oc.spec.name == cand.spec.name and oc.value == unesc for ol, oc in kept
+        ):
+            continue
+        final.append((level, cand))
+    return final
+
+
+def _raw_hits_for(scanned: ScannedString, classes: _Classes) -> list[_RawHit]:
+    """The string's matches as written, then those of its decoded view
+    (`ScannedString.decoded`), each text read the same way and reported at
+    the string's own span and location."""
+    header_len = len(scanned.header) + 2 if scanned.header is not None else 0
+    items: list[tuple[int, str, tuple[bool, ...] | None]] = [(0, scanned.text, None)]
+    for view, view_masks in zip(scanned.decoded, scanned.decoded_masks, strict=True):
+        for (level, text), text_mask in zip(enumerate(view, start=1), view_masks, strict=True):
+            read_mask = (False,) * header_len + text_mask
+            items.append((level, text, read_mask))
+    found: list[tuple[int, str, _Candidate, tuple[bool, ...] | None]] = [
+        (level, read, cand, mask)
+        for level, text, mask in items
+        for read in [text if scanned.header is None else f"{scanned.header}: {text}"]
+        for cand in _candidates(read, classes)
+    ]
     return [
         _RawHit(
-            record_index=scanned.record_index, span_ref=scanned.span_ref,
-            span_name=scanned.span_name, log_record=scanned.log_record,
-            path=scanned.path, key=scanned.key, location=scanned.location, start=cand.start,
-            spec=cand.spec, value=cand.value, prefix=cand.prefix, eligible=cand.eligible,
+            record_index=scanned.record_index,
+            span_ref=scanned.span_ref,
+            span_name=scanned.span_name,
+            log_record=scanned.log_record,
+            path=scanned.path,
+            key=scanned.key,
+            location=scanned.location,
+            unescapings=level,
+            start=cand.start,
+            spec=cand.spec,
+            value=cand.value,
+            prefix=cand.prefix,
+            eligible=cand.eligible,
         )
-        for cand in candidates
-        if not _subsumed(cand, candidates)
+        for level, cand in _claims(found)
     ]
 
 
@@ -273,36 +401,40 @@ def classify_exposure(surface: ExposureSurface, catalog: Catalog) -> ExposureSca
     # different secrets at one location, and is None for triage hits, which
     # collapses this to the (span, location, class) rule triage needs.
     seen: set[tuple[int, str, str, str | None]] = set()
-    for hit in sorted(raw, key=lambda h: (h.record_index, h.location, h.start)):
+    # Within a location, the text as written first: where the decoded view
+    # finds the same claim again, the one as written is kept.
+    for hit in sorted(raw, key=lambda h: (h.record_index, h.location, h.unescapings, h.start)):
         fingerprint = _fingerprint(hit.value) if hit.eligible else None
         key = (hit.record_index, hit.location, hit.spec.name, fingerprint)
         if key in seen:
             continue
         seen.add(key)
-        hits.append(ExposureHit(
-            span_ref=withhold_id(hit.span_ref),
-            span_name=withhold(hit.span_name),
-            location=format_location(hit.path, withhold, key=hit.key),
-            span_key=span_keys.setdefault(hit.span_ref, len(span_keys)),
-            site_key=site_keys.setdefault(
-                (hit.span_ref, hit.log_record, hit.location), len(site_keys)
-            ),
-            source_class=hit.spec.name,
-            eligible=hit.eligible,
-            value_len=len(hit.value),
-            prefix=hit.prefix,
-            # Never emit a suffix that could reconstruct a short value: the
-            # bundled classes are all >= 20 chars, but a contributed catalog
-            # sets its own floor and G4 must not depend on it.
-            last4=(
-                hit.value[-4:]
-                if hit.eligible and len(hit.value) >= _MIN_LAST4_VALUE_LEN
-                else None
-            ),
-            fingerprint=fingerprint,
-            fingerprint_v=FINGERPRINT_VERSION,
-            log_record=hit.log_record,
-        ))
+        hits.append(
+            ExposureHit(
+                span_ref=withhold_id(hit.span_ref),
+                span_name=withhold(hit.span_name),
+                location=format_location(hit.path, withhold, key=hit.key),
+                span_key=span_keys.setdefault(hit.span_ref, len(span_keys)),
+                site_key=site_keys.setdefault(
+                    (hit.span_ref, hit.log_record, hit.location), len(site_keys)
+                ),
+                source_class=hit.spec.name,
+                eligible=hit.eligible,
+                value_len=len(hit.value),
+                prefix=hit.prefix,
+                # Never emit a suffix that could reconstruct a short value: the
+                # bundled classes are all >= 20 chars, but a contributed catalog
+                # sets its own floor and G4 must not depend on it.
+                last4=(
+                    hit.value[-4:]
+                    if hit.eligible and len(hit.value) >= _MIN_LAST4_VALUE_LEN
+                    else None
+                ),
+                fingerprint=fingerprint,
+                fingerprint_v=FINGERPRINT_VERSION,
+                log_record=hit.log_record,
+            )
+        )
 
     return ExposureScan(
         applicable=surface.applicable,

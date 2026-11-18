@@ -10,23 +10,32 @@ A field OTLP does not define is not read: when it holds data it is counted
 as not scanned, its name and value going nowhere (see `_OTLP_FIELDS`).
 
 Mechanical by design. This module knows nothing about credentials, holds no
-regex and never grades anything - that is `weir.exposure`'s job, and the
+credential pattern and never grades anything - that is `weir.exposure`'s job, and the
 import-linter contract that separates them is what keeps this honest.
 
 It consumes the batch BEFORE the GenAI span filter in `_map.py`, on purpose:
 the leak this was written for lives on `{role}.agent` spans carrying only
 vendor attributes, and a walk running after the filter would miss exactly
-those spans, silently. Strings come out AS-IS - no JSON parsing, no
-unescaping - so a key pasted into the JSON string of `gen_ai.input.messages`
-is on the surface like any other.
+those spans, silently. Strings come out AS-IS, so a key pasted into the
+JSON string of `gen_ai.input.messages` is on the surface like any other.
+Beside each string rides the decoded view (`weir.json_escapes`) of the JSON
+it holds, read by the rule the canary judge reads by (docs/canary.md, "The
+decoded view"), so a key with some of its letters written `\\uXXXX` is on
+the surface too; a string escaped past the view's bound is counted as not
+scanned.
 """
 
 from __future__ import annotations
 
+import json
+import re
 from typing import NamedTuple, cast
+
+import msgspec
 
 from weir.adapters.otel._wire import LogRecordInContext, SpanInContext, WireInput
 from weir.canary.walk import decode_bytes_value
+from weir.json_escapes import LEVELS, unescape_map
 from weir.schema.exposure import ExposureSurface, ScannedString, Segment
 
 # ponytail: hard depth cap. Real OTLP kvlists are one or two levels deep;
@@ -53,17 +62,28 @@ _AUTHORIZATION_HEADERS = frozenset({"authorization", "proxy-authorization"})
 # reads the snake_case spellings protojson writes with proto field names and
 # decodes bytes. Any other shape is counted as not scanned.
 _SPAN_WRAPPERS = (
-    ("stringValue", "string"), ("arrayValue", "array"), ("kvlistValue", "kvlist"),
-    ("intValue", "scalar"), ("doubleValue", "scalar"), ("boolValue", "scalar"),
+    ("stringValue", "string"),
+    ("arrayValue", "array"),
+    ("kvlistValue", "kvlist"),
+    ("intValue", "scalar"),
+    ("doubleValue", "scalar"),
+    ("boolValue", "scalar"),
 )
 _LOG_WRAPPERS = (
-    ("stringValue", "string"), ("string_value", "string"),
-    ("bytesValue", "bytes"), ("bytes_value", "bytes"),
-    ("arrayValue", "array"), ("array_value", "array"),
-    ("kvlistValue", "kvlist"), ("kvlist_value", "kvlist"),
-    ("intValue", "scalar"), ("int_value", "scalar"),
-    ("doubleValue", "scalar"), ("double_value", "scalar"),
-    ("boolValue", "scalar"), ("bool_value", "scalar"),
+    ("stringValue", "string"),
+    ("string_value", "string"),
+    ("bytesValue", "bytes"),
+    ("bytes_value", "bytes"),
+    ("arrayValue", "array"),
+    ("array_value", "array"),
+    ("kvlistValue", "kvlist"),
+    ("kvlist_value", "kvlist"),
+    ("intValue", "scalar"),
+    ("int_value", "scalar"),
+    ("doubleValue", "scalar"),
+    ("double_value", "scalar"),
+    ("boolValue", "scalar"),
+    ("bool_value", "scalar"),
 )
 
 # The members OTLP defines at each level, as camelCase OTLP/JSON names
@@ -79,20 +99,53 @@ _OTLP_FIELDS = {
     "scopeSpans": frozenset({"scope", "spans", "schemaUrl"}),
     "scopeLogs": frozenset({"scope", "logRecords", "schemaUrl"}),
     "scope": frozenset({"name", "version", "attributes", "droppedAttributesCount"}),
-    "span": frozenset({
-        "traceId", "spanId", "traceState", "parentSpanId", "flags", "name", "kind",
-        "startTimeUnixNano", "endTimeUnixNano", "attributes", "droppedAttributesCount",
-        "events", "droppedEventsCount", "links", "droppedLinksCount", "status",
-    }),
+    "span": frozenset(
+        {
+            "traceId",
+            "spanId",
+            "traceState",
+            "parentSpanId",
+            "flags",
+            "name",
+            "kind",
+            "startTimeUnixNano",
+            "endTimeUnixNano",
+            "attributes",
+            "droppedAttributesCount",
+            "events",
+            "droppedEventsCount",
+            "links",
+            "droppedLinksCount",
+            "status",
+        }
+    ),
     "event": frozenset({"timeUnixNano", "name", "attributes", "droppedAttributesCount"}),
-    "link": frozenset({
-        "traceId", "spanId", "traceState", "attributes", "droppedAttributesCount", "flags",
-    }),
+    "link": frozenset(
+        {
+            "traceId",
+            "spanId",
+            "traceState",
+            "attributes",
+            "droppedAttributesCount",
+            "flags",
+        }
+    ),
     "status": frozenset({"message", "code"}),
-    "logRecord": frozenset({
-        "timeUnixNano", "observedTimeUnixNano", "severityNumber", "severityText", "body",
-        "attributes", "droppedAttributesCount", "flags", "traceId", "spanId", "eventName",
-    }),
+    "logRecord": frozenset(
+        {
+            "timeUnixNano",
+            "observedTimeUnixNano",
+            "severityNumber",
+            "severityText",
+            "body",
+            "attributes",
+            "droppedAttributesCount",
+            "flags",
+            "traceId",
+            "spanId",
+            "eventName",
+        }
+    ),
     "keyValue": frozenset({"key", "value"}),
     "values": frozenset({"values"}),
 }
@@ -110,7 +163,9 @@ class _Found(NamedTuple):
 
 
 def _undefined(
-    fields: dict[str, object], defined: frozenset[str], path: tuple[Segment, ...],
+    fields: dict[str, object],
+    defined: frozenset[str],
+    path: tuple[Segment, ...],
     out: list[_Found],
 ) -> None:
     """Each member of `fields` outside `defined` holding data (anything but
@@ -122,6 +177,104 @@ def _undefined(
         and value is not None
         and not (isinstance(value, str | list | dict) and not value)
     )
+
+
+# A string's decoded view: per JSON text it holds, its unescapings in order.
+_Views = tuple[tuple[str, ...], ...]
+
+
+_JSON_START = re.compile(r"[\[{]")
+_DECODER = json.JSONDecoder()
+
+
+def _holds_json(text: str) -> bool:
+    """Whether `text` holds an escape and parses as a JSON object, array or
+    string. JSON nested past the decoder's depth limit cannot be told apart,
+    so it is read."""
+    if "\\" not in text:
+        return False
+    try:
+        return isinstance(msgspec.json.decode(text), str | list | dict)
+    except msgspec.DecodeError:
+        return False
+    except RecursionError:
+        return True
+
+
+def _json_texts(text: str) -> list[str]:
+    """The JSON a string holds, where it holds an escape: the string where it
+    parses as a JSON object, array or string, else each object or array
+    inside it, left to right. The canary judge's rule for the texts its
+    decoded view reads (docs/canary.md, "The decoded view"), so the two
+    detectors read one string alike."""
+    if "\\" not in text:
+        return []
+    if _holds_json(text):
+        return [text]
+    texts: list[str] = []
+    at = 0
+    while (start := _JSON_START.search(text, at)) is not None:
+        try:
+            _, end = _DECODER.raw_decode(text, start.start())
+        except ValueError:
+            at = start.start() + 1
+            continue
+        except RecursionError:
+            return [text]
+        texts.append(text[start.start() : end])
+        at = end
+    return texts
+
+
+_Masks = tuple[tuple[tuple[bool, ...], ...], ...]
+
+
+def _char_mask(decoded_bytes: bytes, byte_mask: tuple[bool, ...]) -> tuple[bool, ...]:
+    """Byte-level escape mask to character-level mask for UTF-8 text."""
+    result: list[bool] = []
+    i = 0
+    while i < len(decoded_bytes):
+        b = decoded_bytes[i]
+        if b < 0x80:
+            clen = 1
+        elif b < 0xE0:
+            clen = 2
+        elif b < 0xF0:
+            clen = 3
+        else:
+            clen = 4
+        clen = min(clen, len(decoded_bytes) - i)
+        result.append(any(byte_mask[i : i + clen]))
+        i += clen
+    return tuple(result)
+
+
+def _decoded(text: str) -> tuple[_Views, _Masks, bool]:
+    """The decoded view of each JSON text `text` holds, its per-character
+    escape masks, and whether every view read its text in full. A lone
+    surrogate a JSON string may hold round-trips as itself."""
+    views: list[tuple[str, ...]] = []
+    masks: list[tuple[tuple[bool, ...], ...]] = []
+    complete = True
+    for json_text in _json_texts(text):
+        data = json_text.encode("utf-8", errors="surrogatepass")
+        texts: list[str] = []
+        level_masks: list[tuple[bool, ...]] = []
+        while b"\\" in data:
+            decoded_bytes, byte_mask = unescape_map(data)
+            if len(decoded_bytes) == len(data):
+                break
+            if len(texts) == LEVELS:
+                complete = False
+                break
+            decoded_str = decoded_bytes.decode("utf-8", errors="surrogatepass")
+            texts.append(decoded_str)
+            level_masks.append(_char_mask(decoded_bytes, byte_mask))
+            data = decoded_bytes
+        if texts:
+            views.append(tuple(texts))
+            masks.append(tuple(level_masks))
+    return tuple(views), tuple(masks), complete
 
 
 def _bytes_text(value: object) -> str | None:
@@ -191,7 +344,7 @@ def _header_name(key: str, *, in_kvlist: bool) -> str | None:
     """The authorization header an attribute key names, as written, or None.
     `http.request.header.<name>` names `<name>` anywhere; a bare `<name>`
     names it only as a kvlist entry, where a header map keeps its names."""
-    name = key[len(_REQUEST_HEADER):] if key.lower().startswith(_REQUEST_HEADER) else None
+    name = key[len(_REQUEST_HEADER) :] if key.lower().startswith(_REQUEST_HEADER) else None
     if name is None and in_kvlist:
         name = key
     if name is None or name.lower().replace("_", "-") not in _AUTHORIZATION_HEADERS:
@@ -366,15 +519,22 @@ def scan_surface(wire: WireInput) -> ExposureSurface:
     strings: list[ScannedString] = []
     unread = wire.values_not_scanned
 
-    def readable(found: list[_Found]) -> list[tuple[_Found, str]]:
+    def readable(found: list[_Found]) -> list[tuple[_Found, str, _Views, _Masks]]:
+        """The strings read, each with its decoded view. A value the scan
+        cannot read, or whose view stops at the bound, is not scanned."""
         nonlocal unread
-        unread += sum(f.text is None for f in found)
-        return [(f, f.text) for f in found if f.text is not None]
+        out: list[tuple[_Found, str, _Views, _Masks]] = []
+        for f in found:
+            if f.text is None:
+                unread += 1
+                continue
+            decoded, dmasks, complete = _decoded(f.text)
+            unread += not complete
+            out.append((f, f.text, decoded, dmasks))
+        return out
 
     for span_index, ctx in enumerate(wire.spans):
-        found = readable(
-            _span_surface(ctx) + _context_surface(ctx, seen)
-        )
+        found = readable(_span_surface(ctx) + _context_surface(ctx, seen))
         span_ref = ctx.span.span_id.strip().lower()
         strings.extend(
             ScannedString(
@@ -385,13 +545,13 @@ def scan_surface(wire: WireInput) -> ExposureSurface:
                 text=text,
                 header=f.header,
                 key=f.key,
+                decoded=decoded,
+                decoded_masks=dmasks,
             )
-            for f, text in found
+            for f, text, decoded, dmasks in found
         )
     for log_index, ctx in enumerate(wire.log_records):
-        found = readable(
-            _log_surface(ctx) + _context_surface(ctx, seen, log=True)
-        )
+        found = readable(_log_surface(ctx) + _context_surface(ctx, seen, log=True))
         strings.extend(
             ScannedString(
                 record_index=len(wire.spans) + log_index,
@@ -402,8 +562,10 @@ def scan_surface(wire: WireInput) -> ExposureSurface:
                 header=f.header,
                 log_record=ctx.position,
                 key=f.key,
+                decoded=decoded,
+                decoded_masks=dmasks,
             )
-            for f, text in found
+            for f, text, decoded, dmasks in found
         )
 
     return ExposureSurface(

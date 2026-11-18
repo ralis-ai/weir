@@ -165,10 +165,10 @@ def test_an_escaped_slash_does_not_hide_a_token(form: str) -> None:
     written = value
     for _ in range(layers):
         written = _slashes(json.dumps(written)[1:-1])
-    # The hit is the value's bytes as the span holds them, at any depth.
+    # The decoded reading decides: the hit is the value decoded, not escaped.
     hits = _hits(build())
     source_class = "bearer_token" if value == SLASH_TOKEN else "google_oauth_credential"
-    assert _claims(hits) == [_claim(written, source_class, eligible=True)]
+    assert _claims(hits) == [_claim(value, source_class, eligible=True)]
     assert len(hits[0].prefix) < THRESHOLD or hits[0].prefix == "Authorization: Bearer"
 
 
@@ -257,13 +257,16 @@ def test_a_json_quoted_value_runs_to_its_closing_quote(form: str) -> None:
     assert _claims(_hits(text)) == [_claim(value, "json_credential_field", eligible=False)]
 
 
-@pytest.mark.parametrize(
-    "value", ["abc\\u00e9123456", "123456\\u00e9abc", "abc\\U0001f600123"]
-)
+@pytest.mark.parametrize("value", ["abc\\u00e9123456", "123456\\u00e9abc", "abc\\U0001f600123"])
 def test_a_token_value_with_escapes_counts_its_literal_letters_and_digits(value: str) -> None:
-    # The only digits, or the only letters, come after the escape.
+    # The only digits, or the only letters, come after the escape. When the
+    # escape is a valid JSON escape, the decoded reading decides (OPTION B).
+    from weir.json_escapes import unescape
+
+    decoded = unescape(value.encode("utf-8", "surrogatepass")).decode("utf-8", "surrogatepass")
+    expected = decoded if decoded != value else value
     assert _claims(_hits(f'{{"token": "{value}"}}')) == [
-        _claim(value, "json_credential_field", eligible=False)
+        _claim(expected, "json_credential_field", eligible=False)
     ]
 
 
@@ -293,11 +296,10 @@ def _encoded(value: str, layers: int) -> str:
 
 _BACKSLASH_VALUE = "abc\\defghijk"
 _BACKSLASH_FORMS = {
-    "env-line": (
-        lambda v: json.dumps({"content": f"DB_PASSWORD={v}\n"}), 1, "credential_field"
-    ),
+    "env-line": (lambda v: json.dumps({"content": f"DB_PASSWORD={v}\n"}), 1, "credential_field"),
     "json-quoted": (
-        lambda v: json.dumps({"content": json.dumps({"password": v})}), 2,
+        lambda v: json.dumps({"content": json.dumps({"password": v})}),
+        2,
         "json_credential_field",
     ),
 }
@@ -308,9 +310,8 @@ def test_an_escaped_backslash_stays_inside_a_credential_field_value(form: str) -
     build, layers, source_class = _BACKSLASH_FORMS[form]
     hits = _hits(build(_BACKSLASH_VALUE))
     # A Write tool argument carries the value JSON-encoded, so the span holds
-    # its escaped bytes; an escaped backslash is part of the value, not its end.
-    expected = _encoded(_BACKSLASH_VALUE, layers)
-    assert _claims(hits) == [_claim(expected, source_class, eligible=False)]
+    # its escaped bytes; the decoded reading gives back the original value.
+    assert _claims(hits) == [_claim(_BACKSLASH_VALUE, source_class, eligible=False)]
 
 
 _GOOGLE_FORMS = {
@@ -390,10 +391,8 @@ _NEAR_MISSES = {
     "token-byte-fallback": json.dumps({"token": "\\xe4\\xbd\\xa0"}),
     "token-emoji-escaped": ascii({"token": "\U0001f600\U0001f600"}),
     "token-emoji-escaped-double-quoted": '{"token": "\\U0001f600\\U0001F600"}',
-    "token-escaped-letters": '{"token": "\\u0041\\u0042123456789"}',
-    "token-escaped-letters-in-json": json.dumps(
-        {"body": '{"token": "\\u0041\\u0042123456789"}'}
-    ),
+    # Letters written `\\u0041` in JSON are read as the letters they stand
+    # for (docs/scan.md, "JSON escapes"): test_exposure_decoded.py.
     "token-letters-after-line-break": json.dumps({"token": "12345678\nabcdefgh"}),
     "ya29-prose": "ya29 tokens are short-lived; see ya29.example for the format",
     "ya29-placeholder": "ya29.<access-token>",
@@ -551,9 +550,7 @@ _KVLIST_HEADERS = {
         {"accept": {"stringValue": "*/*"}, name: {"stringValue": f"Bearer {t}"}}
     ),
     "array": lambda name, t: _kvlist({name: _HEADER_ATTRIBUTES["array"](t)}),
-    "nested": lambda name, t: _kvlist(
-        {"headers": _kvlist({name: {"stringValue": f"Bearer {t}"}})}
-    ),
+    "nested": lambda name, t: _kvlist({"headers": _kvlist({name: {"stringValue": f"Bearer {t}"}})}),
 }
 
 
@@ -606,9 +603,11 @@ def test_bearer_under_another_kvlist_entry_is_not_a_hit(name: str) -> None:
 def test_a_kvlist_authorization_entry_without_a_real_token_is_not_a_hit(text: str) -> None:
     # The kvlist entry is judged by the same floors and placeholder rules as
     # the plain header attribute.
-    assert _attribute_hits(
-        "http.request.headers", _kvlist({"authorization": {"stringValue": text}})
-    ) == _attribute_hits("http.request.header.authorization", {"stringValue": text}) == []
+    assert (
+        _attribute_hits("http.request.headers", _kvlist({"authorization": {"stringValue": text}}))
+        == _attribute_hits("http.request.header.authorization", {"stringValue": text})
+        == []
+    )
 
 
 _URL_ENCODED_FORMS = {
@@ -725,9 +724,7 @@ def _claims_with_last4(hits: list[ExposureHit]) -> list[tuple[object, ...]]:
 
 @pytest.mark.parametrize("token", sorted(B64_TOKENS))
 @pytest.mark.parametrize("form", sorted(_PCT_TOKEN_FORMS))
-def test_a_percent_encoded_character_inside_a_token_does_not_cut_it(
-    form: str, token: str
-) -> None:
+def test_a_percent_encoded_character_inside_a_token_does_not_cut_it(form: str, token: str) -> None:
     # The hit is the decoded token's claim: the same length, fingerprint and
     # last4 as the plain header holding it, so the two are one credential.
     text = _PCT_TOKEN_FORMS[form](B64_TOKENS[token])
@@ -931,8 +928,8 @@ def test_a_backslash_run_counts_one_character_per_backslash(name: str) -> None:
 @pytest.mark.parametrize(
     ("text", "value"),
     [
-        ('password=abcdefgh' + "\\" * _LONG_RUN + '"', "abcdefgh"),
-        ('password=abcdefgh' + "\\" * _LONG_RUN + "n", "abcdefgh"),
+        ("password=abcdefgh" + "\\" * _LONG_RUN + '"', "abcdefgh"),
+        ("password=abcdefgh" + "\\" * _LONG_RUN + "n", "abcdefgh"),
         ('{"password": "abcdefgh' + "\\" * _LONG_RUN + '"}', "abcdefgh"),
         ("{'password': 'abcdefgh" + "\\" * _LONG_RUN + "t'}", "abcdefgh"),
     ],

@@ -28,11 +28,16 @@ def _attr(key, value):
 
 def _logs(records, resource=None, scope=None, *, keys=("resourceLogs", "scopeLogs", "logRecords")):
     resource_list, scope_list, record_list = keys
-    return {resource_list: [{
-        "resource": {"attributes": resource or []},
-        scope_list: [{"scope": {"name": "app", "attributes": scope or []},
-                      record_list: records}],
-    }]}
+    return {
+        resource_list: [
+            {
+                "resource": {"attributes": resource or []},
+                scope_list: [
+                    {"scope": {"name": "app", "attributes": scope or []}, record_list: records}
+                ],
+            }
+        ]
+    }
 
 
 def _spans(spans):
@@ -55,9 +60,9 @@ def _run(args, body: str):
 def _assert_value_not_printed(output: str, value: str) -> None:
     # The printing rule: the class head and the last four characters at most,
     # so no 6 characters of the value past its class head ever appear.
-    body = value[len(class_prefix(value)):]
+    body = value[len(class_prefix(value)) :]
     for start in range(len(body) - 5):
-        assert body[start:start + 6] not in output, body[start:start + 6]
+        assert body[start : start + 6] not in output, body[start : start + 6]
 
 
 _PLACES = {
@@ -74,8 +79,26 @@ _PLACES = {
         "body.api_key",
     ),
     "nested body": (
-        _logs([{"body": {"kvlistValue": {"values": [{"key": "request", "value": {
-            "arrayValue": {"values": [{"stringValue": "ok"}, {"stringValue": _KEY}]}}}]}}}]),
+        _logs(
+            [
+                {
+                    "body": {
+                        "kvlistValue": {
+                            "values": [
+                                {
+                                    "key": "request",
+                                    "value": {
+                                        "arrayValue": {
+                                            "values": [{"stringValue": "ok"}, {"stringValue": _KEY}]
+                                        }
+                                    },
+                                }
+                            ]
+                        }
+                    }
+                }
+            ]
+        ),
         "body.request[1]",
     ),
     "resource attribute": (
@@ -118,8 +141,9 @@ def test_log_records_are_numbered_in_input_order_across_batches() -> None:
 
 
 def test_snake_case_log_keys_are_read() -> None:
-    document = _logs([{"body": {"stringValue": _KEY}}],
-                     keys=("resource_logs", "scope_logs", "log_records"))
+    document = _logs(
+        [{"body": {"stringValue": _KEY}}], keys=("resource_logs", "scope_logs", "log_records")
+    )
     assert [h.location for h in _scan(document)] == ["body"]
 
 
@@ -132,8 +156,11 @@ def test_an_authorization_header_attribute_on_a_log_record_is_read_as_a_header()
 
 def test_a_clean_logs_payload_stays_clean() -> None:
     records = [
-        {"severityText": "INFO", "body": {"stringValue": "request served"},
-         "attributes": [_attr("http.route", "/v1/chat")]},
+        {
+            "severityText": "INFO",
+            "body": {"stringValue": "request served"},
+            "attributes": [_attr("http.route", "/v1/chat")],
+        },
         {"body": {"kvlistValue": {"values": [_attr("user", "u-1")]}}},
     ]
     body = json.dumps(_logs(records, resource=[_attr("service.name", "agent")]))
@@ -144,16 +171,18 @@ def test_a_clean_logs_payload_stays_clean() -> None:
     assert gauge.exit_code == 0, gauge.output
     # Every string the payload holds, each value, each key, the scope name
     # and the severityText, is on the surface, read off the payload.
-    strings = sum(body.count(f'"{field}"') for field in ("stringValue", "key", "name",
-                                                          "severityText"))
+    strings = sum(
+        body.count(f'"{field}"') for field in ("stringValue", "key", "name", "severityText")
+    )
     assert len(scan_surface(decode_input(body.encode())).strings) == strings
-    assert (f"exposure scan: 0 spans, {len(records)} log records, {strings} strings"
-            " - no credential-shaped values") in gauge.output
+    assert (
+        f"exposure scan: 0 spans, {len(records)} log records, {strings} strings"
+        " - no credential-shaped values"
+    ) in gauge.output
 
 
 def test_a_mixed_export_reads_both_signals() -> None:
-    span = {"spanId": "aa" * 8, "name": "crew.agent",
-            "attributes": [_attr("acme.agent.llm", _KEY)]}
+    span = {"spanId": "aa" * 8, "name": "crew.agent", "attributes": [_attr("acme.agent.llm", _KEY)]}
     log = {"attributes": [_attr("acme.client", _KEY)]}
     jsonl = json.dumps(_spans([span])) + "\n" + json.dumps(_logs([log])) + "\n"
     one_document = json.dumps({**_spans([span]), **_logs([log])})
@@ -197,8 +226,10 @@ def test_a_payload_weir_cannot_read_is_reported_as_not_scanned(shape: str) -> No
         body = json.dumps({**logs, **_METRICS})
     surface = scan_surface(decode_input(body.encode()))
     assert surface.batches_not_scanned == 1
-    line = ("exposure scan: data in 1 batch not scanned - only spans and log records"
-            " are read, not metrics or other data")
+    line = (
+        "exposure scan: data in 1 batch not scanned - only spans and log records"
+        " are read, not metrics or other data"
+    )
     # Unread data never passes clean: scan is incomplete, gauge just says so.
     for command, code in (("scan", 3), ("gauge", 0)):
         result = _run([command], body)
@@ -267,15 +298,30 @@ _SNAKE_BODIES = {
 def test_a_proto_name_logs_export_is_read_wrappers_and_structure_alike(wrapper: str) -> None:
     # Protojson written with proto field names: snake_case all the way down.
     body, location = _SNAKE_BODIES[wrapper]
-    document = {"resource_logs": [{
-        "resource": {"attributes": [_snake("acme.boot", _KEY)]},
-        "scope_logs": [{"scope": {"name": "app"}, "log_records": [{
-            "time_unix_nano": "1767225600000000000", "severity_text": "INFO",
-            "body": body, "attributes": [_snake("acme.client", _KEY)]}]}],
-    }]}
+    document = {
+        "resource_logs": [
+            {
+                "resource": {"attributes": [_snake("acme.boot", _KEY)]},
+                "scope_logs": [
+                    {
+                        "scope": {"name": "app"},
+                        "log_records": [
+                            {
+                                "time_unix_nano": "1767225600000000000",
+                                "severity_text": "INFO",
+                                "body": body,
+                                "attributes": [_snake("acme.client", _KEY)],
+                            }
+                        ],
+                    }
+                ],
+            }
+        ]
+    }
     hits = _scan(document)
     assert sorted((h.log_record, h.location) for h in hits if h.eligible) == sorted(
-        [(0, "attributes.acme.client"), (0, location), (0, "resource.attributes.acme.boot")])
+        [(0, "attributes.acme.client"), (0, location), (0, "resource.attributes.acme.boot")]
+    )
     result = _run(["scan"], json.dumps(document))
     assert result.exit_code == 1, result.output
     _assert_value_not_printed(result.output, _KEY)
@@ -290,8 +336,14 @@ def _b64(data: bytes, *, urlsafe: bool = False) -> str:
     ("record", "location"),
     [
         ({"body": {"bytesValue": _b64(f"key={_KEY}".encode())}}, "body"),
-        ({"attributes": [{"key": "raw", "value": {
-            "bytes_value": _b64(_KEY.encode(), urlsafe=True)}}]}, "attributes.raw"),
+        (
+            {
+                "attributes": [
+                    {"key": "raw", "value": {"bytes_value": _b64(_KEY.encode(), urlsafe=True)}}
+                ]
+            },
+            "attributes.raw",
+        ),
     ],
     ids=["body", "attribute"],
 )
@@ -321,10 +373,14 @@ _UNREADABLE = {
     "log records given as an object": _logs({"0": {"body": {"stringValue": _KEY}}}),
     "scope logs given as an object": {"resourceLogs": [{"scopeLogs": {"logRecords": []}}]},
     "a body nested past the depth cap": _logs([{"body": _nested_body(300)}]),
-    "a resource that is not an object": {"resourceLogs": [{
-        "resource": f"service {_KEY}", "scopeLogs": [{"logRecords": []}]}]},
-    "resource attributes given as a map": {"resourceLogs": [{
-        "resource": {"attributes": {"acme.boot": _KEY}}, "scopeLogs": [{"logRecords": []}]}]},
+    "a resource that is not an object": {
+        "resourceLogs": [{"resource": f"service {_KEY}", "scopeLogs": [{"logRecords": []}]}]
+    },
+    "resource attributes given as a map": {
+        "resourceLogs": [
+            {"resource": {"attributes": {"acme.boot": _KEY}}, "scopeLogs": [{"logRecords": []}]}
+        ]
+    },
 }
 
 
@@ -335,11 +391,23 @@ def test_a_value_the_scan_cannot_read_is_reported_as_not_scanned(shape: str) -> 
     for command, code in (("scan", 3), ("gauge", 0)):
         result = _run([command], body)
         assert result.exception is None or isinstance(result.exception, SystemExit), (
-            result.exception)
+            result.exception
+        )
         assert result.exit_code == code, result.output
         assert _NOT_SCANNED_LINE in result.output.splitlines(), result.output
     _, html = _report(body, code=3)
     assert f"<div>{_NOT_SCANNED_LINE}</div>" in html
+
+
+def test_the_gauge_does_not_call_an_export_clean_over_a_value_not_scanned() -> None:
+    """Bytes that are not UTF-8 were a value not scanned before the decoded
+    view; the same record with bytes that are is called clean, so the line
+    goes missing because of the value the scan could not read."""
+    readable = _run(["gauge"], json.dumps(_logs([{"body": {"bytesValue": _b64(b"hello")}}])))
+    assert " - no credential-shaped values" in readable.output, readable.output
+    unreadable = _run(["gauge"], json.dumps(_UNREADABLE["bytes that are not UTF-8"]))
+    assert _NOT_SCANNED_LINE in unreadable.output.splitlines(), unreadable.output
+    assert "no credential-shaped values" not in unreadable.output, unreadable.output
 
 
 def test_a_plain_string_body_is_read_as_the_body() -> None:
@@ -357,8 +425,7 @@ def test_a_deep_body_within_the_cap_is_still_found() -> None:
 # reads. What it holds is counted as not scanned, so `weir scan` exits 3.
 _SPAN_SHAPES = {
     "a snake_case value wrapper": {"attributes": [_snake("acme.agent.llm", _KEY)]},
-    "a bytes value": {"attributes": [
-        {"key": "raw", "value": {"bytesValue": _b64(_KEY.encode())}}]},
+    "a bytes value": {"attributes": [{"key": "raw", "value": {"bytesValue": _b64(_KEY.encode())}}]},
     "an attribute value that is a string": {"attributes": [{"key": "k", "value": _KEY}]},
     "a malformed event and status": {"events": ["x", {"attributes": "y"}], "status": "z"},
     "a span that fails to decode": {"attributes": f"bogus {_KEY}"},
@@ -372,8 +439,18 @@ def test_a_span_only_export_reads_as_it_did_before_log_support(shape: str) -> No
     plain = _spans([clean])
     fields = dict(_SPAN_SHAPES[shape])
     scope = fields.pop("scope", {"name": "app"})
-    shaped = {"resourceSpans": [{"scopeSpans": [{"scope": scope, "spans": [
-        clean, {"spanId": "aa" * 8, "name": "crew.agent", **fields}]}]}]}
+    shaped = {
+        "resourceSpans": [
+            {
+                "scopeSpans": [
+                    {
+                        "scope": scope,
+                        "spans": [clean, {"spanId": "aa" * 8, "name": "crew.agent", **fields}],
+                    }
+                ]
+            }
+        ]
+    }
     surface = scan_surface(decode_input(json.dumps(shaped).encode()))
     expected = scan_surface(decode_input(json.dumps(plain).encode()))
     assert surface.values_not_scanned > expected.values_not_scanned == 0
@@ -386,9 +463,13 @@ def test_a_span_only_export_reads_as_it_did_before_log_support(shape: str) -> No
     assert (scan.exit_code, control.exit_code) == (3, 0)
     unread = f"exposure scan: {plural(surface.values_not_scanned, 'value')} not scanned"
     assert [ln for ln in scan.output.splitlines() if "not scanned" in ln] == [
-        f"{unread} - not in a shape the scan reads"]
-    read = [ln for ln in scan.output.splitlines()
-            if "not scanned" not in ln and not ln.startswith("incomplete: ")]
+        f"{unread} - not in a shape the scan reads"
+    ]
+    read = [
+        ln
+        for ln in scan.output.splitlines()
+        if "not scanned" not in ln and not ln.startswith("incomplete: ")
+    ]
     assert read == control.output.splitlines()
 
 
@@ -397,8 +478,11 @@ _REPO = Path(__file__).resolve().parents[3]
 
 @pytest.mark.parametrize(
     "fixture",
-    sorted(p.name for p in (_REPO / "fixtures" / "otlp-corrupt").glob("*.json*")
-           if not p.name.startswith("reject-")),
+    sorted(
+        p.name
+        for p in (_REPO / "fixtures" / "otlp-corrupt").glob("*.json*")
+        if not p.name.startswith("reject-")
+    ),
 )
 def test_a_committed_traces_fixture_counts_only_its_quarantined_data(fixture: str) -> None:
     # These fixtures hold no log record, and no span value in a shape the
@@ -407,13 +491,20 @@ def test_a_committed_traces_fixture_counts_only_its_quarantined_data(fixture: st
     data = (_REPO / "fixtures" / "otlp-corrupt" / fixture).read_bytes()
     assert b"resourceLogs" not in data and b"resource_logs" not in data
     wire = decode_input(data)
-    quarantined = sum(d.reason in ("undecodable_span", "undecodable_scope")
-                      for d in wire.degradations)
+    quarantined = sum(
+        d.reason in ("undecodable_span", "undecodable_scope") for d in wire.degradations
+    )
     assert scan_surface(wire).values_not_scanned == quarantined
 
 
-_FLOW_LINES = ("evidentiary coverage", "argument capture", "degraded", "provenance",
-               "the trace matched no registered dialect", "non-trace")
+_FLOW_LINES = (
+    "evidentiary coverage",
+    "argument capture",
+    "degraded",
+    "provenance",
+    "the trace matched no registered dialect",
+    "non-trace",
+)
 _NO_SPANS = "flow scan: the input held no spans, so no flow trace was built"
 
 
@@ -441,9 +532,7 @@ def test_gauge_on_a_logs_only_export_reports_a_line_it_could_not_decode() -> Non
     clean = json.dumps(_logs([{"body": {"stringValue": "started"}}]))
     truncated = json.dumps(_logs([{"body": {"stringValue": _KEY}}]))[:-1]
     body = f"{clean}\n{truncated}\n"
-    [undecodable] = [
-        d for d in decode_input(body.encode()).degradations if d.subject == "line:2"
-    ]
+    [undecodable] = [d for d in decode_input(body.encode()).degradations if d.subject == "line:2"]
     output = _run(["gauge"], body).output
     assert REMEDIATION[undecodable.reason] in output.splitlines(), output
     assert not any(word in output for word in _FLOW_LINES), output
@@ -451,8 +540,9 @@ def test_gauge_on_a_logs_only_export_reports_a_line_it_could_not_decode() -> Non
 
 def test_a_log_record_is_named_by_its_position_among_the_input_records() -> None:
     document = _logs([None, {"body": {"stringValue": _KEY}}])
-    [records] = [scope["logRecords"] for rs in document["resourceLogs"]
-                 for scope in rs["scopeLogs"]]
+    [records] = [
+        scope["logRecords"] for rs in document["resourceLogs"] for scope in rs["scopeLogs"]
+    ]
     position = next(i for i, r in enumerate(records) if r and _KEY in json.dumps(r))
     [hit] = _scan(document)
     assert hit.log_record == position

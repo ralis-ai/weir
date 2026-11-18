@@ -33,7 +33,9 @@ string item of 8 or more characters, after up to three leading `null`,
 `None`, number or shorter string items. A placeholder first item therefore hides a
 real value after it (`["REDACTED", "..."]` is not found). Under the key
 `token` alone the value counts only when it has both a letter and a digit of
-its own (an escape sequence such as `\n` or `\u0041` counts as neither), so
+its own (an escape sequence such as `\n` or `\u0041` counts as neither,
+though in JSON the [decoded view](#json-escapes) reads `\u0041` as the
+`A` it stands for), so
 a logprobs `"token": "Certainly"` is not one, in any language. A key-name match has no shape to check, so it goes to
 the review queue rather than failing the scan. It also reports a credential
 held inside a URL: the password in a URL's userinfo
@@ -93,6 +95,36 @@ scan did not read (see [Limits](#limits)).
 
 Install `weir-scan`; the import and the command are both `weir`.
 
+## JSON escapes
+
+JSON lets a writer escape any character as `\uXXXX`, so a key can sit in an
+exported string with some of its letters escaped. Where a string the key
+scan reads holds an escape and is JSON (an object, an array or a string),
+or holds a JSON object or array inside other text, the scan also reads that
+JSON with its escapes undone. This is the decoded view `weir canary judge`
+reads, by the same rule ([the decoded view](canary.md#the-decoded-view)):
+one unescaping gives each string leaf and key of the JSON decoded, and a
+JSON document held as a string inside it is decoded by the next.
+
+- A key found this way is reported at the same span or log record and
+  location as the string it sits in, exactly as if it had been written
+  plainly there. A key found both as written and decoded is one finding:
+  where an escape lies inside or right next to a match, the decoded
+  reading decides; a match that no escape touches is decided as written.
+- Every JSON escape is undone, not only `\uXXXX`: `\n`, `\t`, `\"`, `\\`
+  and `\/` too. So JSON text that holds any escape can gain findings,
+  triage findings included, that the text as written does not give, and
+  `weir gauge` then shows them instead of `no credential-shaped values`.
+  For text with no JSON escape every result is the same as without the
+  view.
+- Text that holds no complete JSON object, array or string, such as a
+  `key=s...` line or JSON cut short before it closes, is read as
+  written only.
+- Text that still holds an escape is unescaped again, up to **16** times.
+  A string escaped deeper than that is counted as a value not scanned
+  (`1 value not scanned`), never as clean.
+- The view adds no count: `strings` counts the strings as written.
+
 ## Which frameworks?
 
 Any that can export OpenTelemetry spans to a file.
@@ -135,7 +167,8 @@ Any that can export OpenTelemetry spans to a file.
   (`1 value not scanned`), and so is a field OTLP does not define that
   holds anything but `null` or an empty string, list or object, at any
   level from the `resourceSpans` or `resourceLogs` element down to an
-  attribute value. That field is counted, never read: its name and value
+  attribute value, and a string escaped deeper than the [decoded
+  view](#json-escapes) reads. That field is counted, never read: its name and value
   are not printed. Such an export never passes clean:
   unless a finding makes it exit 1, `weir scan` exits 3, its last line is
   `incomplete: the export holds data the scan did not read (see above)`,
