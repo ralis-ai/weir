@@ -77,9 +77,9 @@ defines for spans and log records. A field OTLP does not define is not
 read: when it holds data the export is incomplete (see [Limits](#limits)).
 An export may hold traces,
 logs or both, in one file, with camelCase or snake_case (proto field name)
-structural keys. The snake_case value wrappers (`string_value`, ...) are
-read in log records only; a span attribute value is read from the camelCase
-OTLP/JSON wrappers (`stringValue`, ...). In a log record a bytes value is
+structural keys. Attribute values are read from both the camelCase OTLP/JSON
+wrappers (`stringValue`, ...) and the snake_case spellings (`string_value`,
+...) in spans and log records alike. In a log record a bytes value is
 decoded and scanned when it is UTF-8 text.
 
 Each check is a rule, and a rule is a short JSON file naming a source, a
@@ -164,13 +164,14 @@ Any that can export OpenTelemetry spans to a file.
   input lines that are not valid JSON, lines or top-level array members
   that decode to something other than an object, span or log-record data
   in a shape the scan cannot read, such as a span that fails to decode, a
-  span value in a snake_case wrapper or in `bytesValue`, or log-record
-  bytes that are not UTF-8 (`1 value not scanned`), and so is a field OTLP
-  does not define that holds anything but `null` or an empty string, list
-  or object, at any level from the `resourceSpans` or `resourceLogs`
-  element down to an attribute value, and a string escaped deeper than the
-  [decoded view](#json-escapes) reads. That field is counted, never read:
-  its name and value are not printed. Such an export never passes clean:
+  span value in a `bytesValue` or `bytes_value` wrapper, or
+  log-record bytes that are not UTF-8 (`1 value not scanned`), and so is
+  a field OTLP does not define that holds anything but `null` or an empty
+  string, list or object, at any level from the `resourceSpans` or
+  `resourceLogs` element down to an attribute value, and a string escaped
+  deeper than the [decoded view](#json-escapes) reads. That field is
+  counted, never read: its name and value are not printed. Such an export
+  never passes clean:
   unless a finding makes it exit 1, `weir scan` exits 3, its last line is
   `incomplete: the export holds data the scan did not read (see above)`,
   and the HTML report shows an incomplete notice in place of the green

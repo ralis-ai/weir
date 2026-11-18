@@ -125,7 +125,11 @@ def _has_floor(spec: SourceSpec) -> bool:
     return e.structure_class is not None or e.pattern is not None or e.min_length is not None
 
 
-def _subsumed(cand: _Candidate, candidates: list[_Candidate]) -> bool:
+def _subsumed(
+    cand: _Candidate,
+    sorted_starts: list[int],
+    sorted_cands: list[_Candidate],
+) -> bool:
     """`api_key='sk-proj-...'` matches credential_field at the key name and
     openai_api_key at the value, so the offset rule does not dedupe them. Drop
     the assignment-shaped hit when an eligible hit of ANOTHER class lies
@@ -133,17 +137,13 @@ def _subsumed(cand: _Candidate, candidates: list[_Candidate]) -> bool:
     the same bytes, and keeping both would double every location in the
     report and the gauge.
 
-    `candidates` is always the list for one (span, location) - one
-    `_raw_hits_for` call, one `ScannedString` - so unlike the batch-wide scan
-    this used to run against, span/location never need comparing here."""
+    `sorted_starts` and `sorted_cands` are the candidates sorted by start
+    position, so the range check uses bisect instead of a full scan."""
     if not cand.has_group:
         return False
-    return any(
-        other.eligible
-        and other.spec is not cand.spec
-        and cand.value_start <= other.start < cand.value_end
-        for other in candidates
-    )
+    lo = bisect.bisect_left(sorted_starts, cand.value_start)
+    hi = bisect.bisect_left(sorted_starts, cand.value_end)
+    return any(other.eligible and other.spec is not cand.spec for other in sorted_cands[lo:hi])
 
 
 _Classes = list[tuple[SourceSpec, re.Pattern[str], int]]
@@ -200,7 +200,9 @@ def _candidates(text: str, classes: _Classes) -> list[_Candidate]:
             _Candidate(spec, start, value, prefix, eligible, value_start, value_end, has_group)
         )
 
-    return [cand._replace(subsumed=_subsumed(cand, candidates)) for cand in candidates]
+    by_start = sorted(candidates, key=lambda c: c.start)
+    sorted_starts = [c.start for c in by_start]
+    return [cand._replace(subsumed=_subsumed(cand, sorted_starts, by_start)) for cand in candidates]
 
 
 # The str form of the JSON escape regex (`weir.json_escapes._ESCAPE`),

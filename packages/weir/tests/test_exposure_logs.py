@@ -424,7 +424,6 @@ def test_a_deep_body_within_the_cap_is_still_found() -> None:
 # span-only export, reads exactly the values the same export without it
 # reads. What it holds is counted as not scanned, so `weir scan` exits 3.
 _SPAN_SHAPES = {
-    "a snake_case value wrapper": {"attributes": [_snake("acme.agent.llm", _KEY)]},
     "a bytes value": {"attributes": [{"key": "raw", "value": {"bytesValue": _b64(_KEY.encode())}}]},
     "an attribute value that is a string": {"attributes": [{"key": "k", "value": _KEY}]},
     "a malformed event and status": {"events": ["x", {"attributes": "y"}], "status": "z"},
